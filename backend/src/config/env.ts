@@ -40,7 +40,7 @@ const envSchema = z.object({
   MAX_FILE_SIZE: z.string().default('10485760'),
   UPLOAD_DIR: z.string().default('./uploads'),
   
-  // CORS
+  // CORS – comma-separated list of allowed origins (e.g. https://app.example.com,http://localhost:3000)
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
 });
 
