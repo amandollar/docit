@@ -29,15 +29,17 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-[#FDFBF7]">
       <DashboardHeader />
-      <div className="container mx-auto px-4 py-12 lg:py-16">
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-neutral-900 mb-2">
-          Welcome, <span className="font-hand text-4xl md:text-5xl text-neutral-800">{user.name}</span>
-        </h1>
-        <p className="text-xl text-neutral-600 mb-12 max-w-2xl">
-          Your document workspace. Upload, organize, and understand your files.
-        </p>
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16 max-w-6xl">
+        <div className="text-center max-w-2xl mx-auto mb-12">
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-neutral-900 mb-2">
+            Welcome, <span className="font-hand text-4xl md:text-5xl text-neutral-800">{user.name}</span>
+          </h1>
+          <p className="text-xl text-neutral-600">
+            Your document workspace. Upload, organize, and understand your files.
+          </p>
+        </div>
 
-        <div className="grid gap-6 md:grid-cols-2 max-w-4xl">
+        <div className="grid gap-6 sm:grid-cols-2 max-w-4xl mx-auto">
           <Link href="/dashboard/workspaces">
             <Sticker className="min-h-[180px] flex flex-col cursor-pointer hover:scale-[1.02] transition-transform" rotation={-1} color="yellow" hasTape delay={0.1}>
               <div className="flex items-center gap-3 mb-4">
@@ -67,7 +69,7 @@ export default function DashboardPage() {
           </Sticker>
         </div>
 
-        <div className="mt-12 pt-8 border-t border-dashed border-neutral-300">
+        <div className="mt-12 pt-8 border-t border-dashed border-neutral-300 max-w-4xl mx-auto">
           <p className="text-center text-neutral-400 font-hand text-lg">
             More features on the way — stay tuned.
           </p>

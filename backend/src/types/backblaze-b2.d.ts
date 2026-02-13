@@ -15,7 +15,7 @@ declare module 'backblaze-b2' {
       data: Buffer;
       contentType?: string;
     }): Promise<{ data: { fileId: string } }>;
-    downloadFileByName(params: { bucketName: string; fileName: string }): Promise<{ data: Buffer | ArrayBuffer }>;
+    downloadFileByName(params: { bucketName: string; fileName: string; responseType?: string }): Promise<{ data: Buffer | ArrayBuffer }>;
     deleteFileVersion(params: { fileId: string; fileName: string }): Promise<unknown>;
     getDownloadAuthorization?(params: { bucketId: string; fileNamePrefix: string; validDurationInSeconds: number }): Promise<{ data: { authorizationToken: string; downloadUrl: string } }>;
     listFileNames(params: { bucketId: string; startFileName?: string; maxFileCount?: number; prefix?: string }): Promise<{

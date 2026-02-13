@@ -67,7 +67,7 @@ app.use((err: Error & { code?: string; status?: number }, _req: Request, res: Re
     res.status(400).json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'File size exceeds limit' } });
     return;
   }
-  if (err.message?.includes('PDF') || err.code === 'LIMIT_UNEXPECTED_FILE') {
+  if (err.message?.includes('allowed') || err.code === 'LIMIT_UNEXPECTED_FILE') {
     res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: err.message || 'Invalid file' } });
     return;
   }

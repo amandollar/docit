@@ -1,19 +1,35 @@
+import http from 'http';
+import { WebSocketServer } from 'ws';
 import app from './app';
 import env from './config/env';
 import connectDatabase from './config/database';
 import logger from './utils/logger';
+import { handleWorkspaceChatUpgrade } from './websocket/workspace-chat';
 
 const startServer = async (): Promise<void> => {
   try {
-    // Connect to MongoDB
     await connectDatabase();
-    
-    // Start server
+
     const PORT = parseInt(env.PORT) || 5000;
-    app.listen(PORT, () => {
+    const server = http.createServer(app);
+    const wss = new WebSocketServer({ noServer: true });
+
+    server.on('upgrade', (request, socket, head) => {
+      const path = request.url?.split('?')[0] || '';
+      if (path !== '/ws') {
+        socket.destroy();
+        return;
+      }
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        handleWorkspaceChatUpgrade(request, ws, head);
+      });
+    });
+
+    server.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`📝 Environment: ${env.NODE_ENV}`);
       logger.info(`🌐 Health check: http://localhost:${PORT}/health`);
+      logger.info(`🔌 WebSocket: ws://localhost:${PORT}/ws`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

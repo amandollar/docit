@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import Document from '../models/Document';
 import * as documentService from '../services/document.service';
 import { isValidObjectId } from '../utils/validators';
 import logger from '../utils/logger';
@@ -17,20 +18,22 @@ export async function upload(req: Request, res: Response): Promise<void> {
     }
     const file = req.file;
     if (!file?.path) {
-      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'PDF file is required' } });
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Document file is required' } });
       return;
     }
     const doc = await documentService.uploadDocument(
       String(workspaceId),
       user,
       file.path,
-      file.originalname || 'document.pdf'
+      file.originalname || 'document',
+      file.mimetype || 'application/octet-stream'
     );
     if (!doc) {
       res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'No access to workspace or not allowed to upload' } });
       return;
     }
-    res.status(201).json({ success: true, data: doc });
+    const populated = await Document.findById(doc._id).populate('uploadedBy', 'name email avatar').lean();
+    res.status(201).json({ success: true, data: populated || doc });
   } catch (error) {
     logger.error('document upload error:', error);
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Upload failed' } });
@@ -94,7 +97,7 @@ export async function download(req: Request, res: Response): Promise<void> {
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Document not found' } });
       return;
     }
-    const safeName = result.filename.replace(/[^\w\s.-]/g, '_').replace(/\s+/g, '_') || 'document.pdf';
+    const safeName = result.filename.replace(/[^\w\s.-]/g, '_').replace(/\s+/g, '_') || 'document';
     res.setHeader('Content-Type', result.mimeType);
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
     res.send(result.buffer);

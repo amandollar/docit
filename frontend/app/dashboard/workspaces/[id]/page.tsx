@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -20,13 +20,17 @@ import {
 } from "@/lib/api";
 import type { Workspace, WorkspaceMemberRole } from "@/types/workspace";
 import type { Document } from "@/types/document";
+import { useWorkspaceChat } from "@/lib/use-workspace-chat";
+import { WorkspaceChatPanel } from "@/components/dashboard/workspace-chat-panel";
 import { ArrowLeft, FileText, Pencil, Trash2, Loader2, Upload, Download, UserPlus, Users, FileStack } from "lucide-react";
+import { isAllowedFile, ALLOWED_ACCEPT, SUPPORTED_TYPES_LABEL } from "@/lib/document-types";
 
 export default function WorkspaceDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
-  const { user: currentUser, isAuthenticated, loading: authLoading, getAccessToken } = useAuth();
+  const { user: currentUser, isAuthenticated, loading: authLoading, getAccessToken, refreshAndGetToken } = useAuth();
+  const auth = useMemo(() => ({ getAccessToken, refreshAndGetToken }), [getAccessToken, refreshAndGetToken]);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,12 +61,13 @@ export default function WorkspaceDetailPage() {
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null);
 
+  const { messages: chatMessages, status: chatStatus, errorMessage: chatError, send: sendChatMessage, reconnect: reconnectChat } = useWorkspaceChat(id, getAccessToken);
+
   const fetchWorkspace = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token || !id) return;
+    if (!id) return;
     setLoading(true);
     setError(null);
-    const res = await getWorkspace(token, id);
+    const res = await getWorkspace(auth, id);
     setLoading(false);
     if (res.success) {
       setWorkspace(res.data);
@@ -71,18 +76,17 @@ export default function WorkspaceDetailPage() {
     } else {
       setError(res.error?.message ?? "Workspace not found");
     }
-  }, [getAccessToken, id]);
+  }, [auth, id]);
 
   const fetchDocuments = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token || !id) return;
+    if (!id) return;
     setDocsLoading(true);
     setDocsError(null);
-    const res = await listDocumentsByWorkspace(token, id);
+    const res = await listDocumentsByWorkspace(auth, id);
     setDocsLoading(false);
     if (res.success) setDocuments(res.data);
     else setDocsError(res.error?.message ?? "Failed to load documents");
-  }, [getAccessToken, id]);
+  }, [auth, id]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -98,11 +102,10 @@ export default function WorkspaceDetailPage() {
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = getAccessToken();
-    if (!token || !id) return;
+    if (!id) return;
     setSaveError(null);
     setSaving(true);
-    const res = await updateWorkspace(token, id, {
+    const res = await updateWorkspace(auth, id, {
       name: editName.trim(),
       description: editDescription.trim() || undefined,
     });
@@ -116,10 +119,9 @@ export default function WorkspaceDetailPage() {
   };
 
   const handleDelete = async () => {
-    const token = getAccessToken();
-    if (!token || !id) return;
+    if (!id) return;
     setDeleting(true);
-    const res = await deleteWorkspace(token, id);
+    const res = await deleteWorkspace(auth, id);
     setDeleting(false);
     setConfirmDelete(false);
     if (res.success) {
@@ -130,20 +132,18 @@ export default function WorkspaceDetailPage() {
   const processFiles = useCallback(
     async (files: FileList | null) => {
       if (!files?.length || !id) return;
-      const token = getAccessToken();
-      if (!token) return;
-      const pdfs = Array.from(files).filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
-      if (pdfs.length === 0) {
-        setUploadError("Please select PDF files.");
+      const accepted = Array.from(files).filter(isAllowedFile);
+      if (accepted.length === 0) {
+        setUploadError(`Please select documents (${SUPPORTED_TYPES_LABEL}).`);
         return;
       }
-      if (pdfs.length !== files.length) setUploadError("Some files were skipped (PDF only).");
+      if (accepted.length !== files.length) setUploadError("Some files were skipped (unsupported type).");
       else setUploadError(null);
       setUploading(true);
       const added: Document[] = [];
-      for (let i = 0; i < pdfs.length; i++) {
-        setUploadProgress(pdfs.length > 1 ? `Uploading ${i + 1} of ${pdfs.length}…` : null);
-        const res = await uploadDocument(token, id, pdfs[i]);
+      for (let i = 0; i < accepted.length; i++) {
+        setUploadProgress(accepted.length > 1 ? `Uploading ${i + 1} of ${accepted.length}…` : null);
+        const res = await uploadDocument(auth, id, accepted[i]);
         if (res.success) added.push(res.data);
         else setUploadError(res.error?.message ?? "Upload failed");
       }
@@ -151,7 +151,7 @@ export default function WorkspaceDetailPage() {
       setUploading(false);
       if (added.length) setDocuments((prev) => [...added, ...prev]);
     },
-    [getAccessToken, id]
+    [auth, id]
   );
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -181,9 +181,7 @@ export default function WorkspaceDetailPage() {
   }, []);
 
   const handleDownload = async (doc: Document) => {
-    const token = getAccessToken();
-    if (!token) return;
-    const res = await downloadDocument(token, doc._id);
+    const res = await downloadDocument(auth, doc._id);
     if (!res.success) return;
     const url = URL.createObjectURL(res.blob);
     const a = document.createElement("a");
@@ -194,10 +192,8 @@ export default function WorkspaceDetailPage() {
   };
 
   const handleDeleteDocument = async (docId: string) => {
-    const token = getAccessToken();
-    if (!token) return;
     setDeletingId(docId);
-    const res = await deleteDocument(token, docId);
+    const res = await deleteDocument(auth, docId);
     setDeletingId(null);
     if (res.success) setDocuments((prev) => prev.filter((d) => d._id !== docId));
   };
@@ -231,11 +227,10 @@ export default function WorkspaceDetailPage() {
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = getAccessToken();
-    if (!token || !id || !inviteEmail.trim()) return;
+    if (!id || !inviteEmail.trim()) return;
     setInviteError(null);
     setInviting(true);
-    const res = await inviteWorkspaceByEmail(token, id, inviteEmail.trim(), inviteRole);
+    const res = await inviteWorkspaceByEmail(auth, id, inviteEmail.trim(), inviteRole);
     setInviting(false);
     if (res.success) {
       setWorkspace(res.data);
@@ -247,19 +242,17 @@ export default function WorkspaceDetailPage() {
   };
 
   const handleRemoveMember = async (userId: string) => {
-    const token = getAccessToken();
-    if (!token || !id) return;
+    if (!id) return;
     setRemovingMemberId(userId);
-    const res = await removeWorkspaceMember(token, id, userId);
+    const res = await removeWorkspaceMember(auth, id, userId);
     setRemovingMemberId(null);
     if (res.success) fetchWorkspace();
   };
 
   const handleRoleChange = async (userId: string, role: WorkspaceMemberRole) => {
-    const token = getAccessToken();
-    if (!token || !id) return;
+    if (!id) return;
     setUpdatingRoleId(userId);
-    const res = await updateWorkspaceMemberRole(token, id, userId, role);
+    const res = await updateWorkspaceMemberRole(auth, id, userId, role);
     setUpdatingRoleId(null);
     if (res.success) setWorkspace(res.data);
   };
@@ -321,7 +314,7 @@ export default function WorkspaceDetailPage() {
   return (
     <main className="min-h-screen bg-[#FDFBF7]">
       <DashboardHeader />
-      <div className="container mx-auto px-4 py-8 lg:py-10">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-10 max-w-6xl">
         <Link
           href="/dashboard/workspaces"
           className="inline-flex items-center gap-2 text-neutral-600 hover:text-neutral-900 text-sm mb-6 font-medium transition-colors"
@@ -330,7 +323,8 @@ export default function WorkspaceDetailPage() {
           Back to workspaces
         </Link>
 
-        <div className="max-w-3xl space-y-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-8 xl:gap-10 items-start">
+          <div className="space-y-6 min-w-0">
           {/* Workspace info — standard card */}
           <div className="bg-white border border-neutral-200 rounded-lg shadow-sm p-6">
             <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -520,133 +514,165 @@ export default function WorkspaceDetailPage() {
           </div>
 
           {/* Documents section */}
-          <div className="bg-white border border-neutral-200 rounded-lg shadow-sm p-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-              <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wide flex items-center gap-2">
-                <FileText className="w-4 h-4 text-neutral-500" />
-                Documents
-                {!docsLoading && documents.length > 0 && (
-                  <span className="font-normal normal-case text-neutral-500">({documents.length})</span>
-                )}
-              </h2>
-              {canUpload && (
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  className="hidden"
-                  onChange={handleUpload}
-                  multiple
-                />
-              )}
+          <div className="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-neutral-100">
+              <div className="flex items-baseline justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wide flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-neutral-500 shrink-0" />
+                    Documents
+                    {!docsLoading && documents.length > 0 && (
+                      <span className="font-normal normal-case text-neutral-500">({documents.length})</span>
+                    )}
+                  </h2>
+                  <p className="text-neutral-500 text-sm mt-0.5">Documents in this workspace. Download or manage below.</p>
+                </div>
+              </div>
             </div>
 
-            {canUpload && (
-              <div
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onClick={() => !uploading && fileInputRef.current?.click()}
-                className={`
-                  mb-4 rounded-xl border-2 border-dashed transition-all cursor-pointer
-                  ${isDragging ? "border-neutral-900 bg-neutral-100 scale-[1.01]" : "border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50/80"}
-                  ${documents.length === 0 ? "min-h-[180px] flex flex-col items-center justify-center py-10 px-6" : "py-4 px-4 flex items-center justify-center gap-3"}
-                `}
-              >
-                {uploading ? (
-                  <div className="flex items-center gap-3 text-neutral-600">
-                    <Loader2 className="w-6 h-6 animate-spin shrink-0" />
-                    <span className="text-sm font-medium">{uploadProgress ?? "Uploading…"}</span>
-                  </div>
-                ) : documents.length === 0 ? (
-                  <>
-                    <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center mb-3">
-                      <FileStack className="w-7 h-7 text-red-600/80" />
-                    </div>
-                    <p className="font-semibold text-neutral-900 mb-1">Drop PDFs here or click to browse</p>
-                    <p className="text-neutral-500 text-sm">Add contracts, reports, or any PDF. Multiple files supported.</p>
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-5 h-5 text-neutral-500 shrink-0" />
-                    <span className="text-sm font-medium text-neutral-700">Drop PDFs or click to add more</span>
-                  </>
-                )}
-              </div>
-            )}
-
-            {uploadError && <p className="text-red-600 text-sm mb-3">{uploadError}</p>}
-
-            {docsLoading ? (
-              <div className="flex items-center gap-2 text-neutral-500 text-sm py-8">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Loading documents…
-              </div>
-            ) : docsError ? (
-              <p className="text-red-600 text-sm py-4">{docsError}</p>
-            ) : documents.length === 0 && !canUpload ? (
-              <p className="text-neutral-500 text-sm py-6">No documents in this workspace yet.</p>
-            ) : documents.length > 0 ? (
-              <ul className="space-y-2">
-                {documents.map((doc) => {
-                  const uploaderName = typeof doc.uploadedBy === "object" && doc.uploadedBy?.name ? doc.uploadedBy.name : "—";
-                  const uploaderInitials = uploaderName.slice(0, 2).toUpperCase();
-                  return (
-                    <li
-                      key={doc._id}
-                      className="group flex items-center gap-4 p-4 rounded-xl border border-neutral-100 hover:border-neutral-200 hover:bg-neutral-50/60 transition-all"
-                    >
-                      <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center shrink-0 shadow-sm">
-                        <FileText className="w-6 h-6 text-red-600/80" />
+            <div className="p-5 space-y-5">
+              {canUpload && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={ALLOWED_ACCEPT}
+                    className="hidden"
+                    onChange={handleUpload}
+                    multiple
+                  />
+                  <div
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onClick={() => !uploading && fileInputRef.current?.click()}
+                    className={`
+                      rounded-xl border-2 border-dashed transition-all cursor-pointer
+                      ${isDragging ? "border-neutral-900 bg-neutral-100 scale-[1.01]" : "border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50/80"}
+                      ${documents.length === 0 ? "min-h-[160px] flex flex-col items-center justify-center py-8 px-6" : "py-3 px-4 flex items-center justify-center gap-3"}
+                    `}
+                  >
+                    {uploading ? (
+                      <div className="flex items-center gap-3 text-neutral-600">
+                        <Loader2 className="w-6 h-6 animate-spin shrink-0" />
+                        <span className="text-sm font-medium">{uploadProgress ?? "Uploading…"}</span>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-neutral-900 truncate">{doc.title}</p>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-xs text-neutral-500">
-                          <span>{formatFileSize(doc.fileSize)}</span>
-                          <span>·</span>
-                          <span>{formatDocDate(doc.createdAt)}</span>
-                          <span>·</span>
-                          <span className="flex items-center gap-1">
-                            <span className="w-5 h-5 rounded-full bg-neutral-200 flex items-center justify-center text-[10px] font-medium text-neutral-600 shrink-0">
-                              {uploaderInitials}
-                            </span>
-                            {uploaderName}
-                          </span>
+                    ) : documents.length === 0 ? (
+                      <>
+                        <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center mb-2">
+                          <FileStack className="w-6 h-6 text-red-600/80" />
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDownload(doc)}
-                          className="h-9 w-9 p-0"
-                          title="Download"
+                        <p className="font-semibold text-neutral-900 text-sm">Drop documents here or click to browse</p>
+                        <p className="text-neutral-500 text-xs">{SUPPORTED_TYPES_LABEL}</p>
+                      </>
+                    ) : (
+                      <span className="flex flex-col items-center gap-0.5 sm:flex-row sm:gap-2 text-sm font-medium text-neutral-600">
+                        <span className="flex items-center gap-2">
+                          <Upload className="w-4 h-4 shrink-0" />
+                          Drop documents or click to add more
+                        </span>
+                        <span className="text-xs font-normal text-neutral-400">({SUPPORTED_TYPES_LABEL})</span>
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {uploadError && (
+                <p className="text-red-600 text-sm rounded-lg bg-red-50/80 px-3 py-2">{uploadError}</p>
+              )}
+
+              {docsLoading ? (
+                <div className="flex items-center justify-center gap-2 text-neutral-500 text-sm py-10">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Loading documents…
+                </div>
+              ) : docsError ? (
+                <p className="text-red-600 text-sm py-4">{docsError}</p>
+              ) : documents.length === 0 && !canUpload ? (
+                <p className="text-neutral-500 text-sm py-8 text-center">No documents in this workspace yet.</p>
+              ) : documents.length > 0 ? (
+                <div className="border border-neutral-100 rounded-xl overflow-hidden">
+                  <ul className="divide-y divide-neutral-100">
+                    {documents.map((doc) => {
+                      const uploaderName =
+                        typeof doc.uploadedBy === "object" && doc.uploadedBy?.name
+                          ? doc.uploadedBy.name
+                          : typeof doc.uploadedBy === "string" && currentUser?.id === doc.uploadedBy
+                            ? currentUser.name ?? "—"
+                            : "—";
+                      const uploaderInitials = uploaderName !== "—" ? uploaderName.slice(0, 2).toUpperCase() : "—";
+                      return (
+                        <li
+                          key={doc._id}
+                          className="group flex items-center gap-4 px-4 py-3 hover:bg-neutral-50/80 transition-colors"
                         >
-                          <Download className="w-4 h-4" />
-                        </Button>
-                        {canUpload && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteDocument(doc._id)}
-                            disabled={deletingId === doc._id}
-                            className="h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            title="Delete"
-                          >
-                            {deletingId === doc._id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-4 h-4" />
+                          <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                            <FileText className="w-5 h-5 text-red-600/80" />
+                          </div>
+                          <div className="min-w-0 flex-1 grid grid-cols-1 sm:grid-cols-[1fr_auto] sm:items-center gap-0.5 sm:gap-4">
+                            <p className="font-medium text-neutral-900 truncate">{doc.title}</p>
+                            <div className="flex items-center gap-2 text-xs text-neutral-500 sm:text-right">
+                              <span>{formatFileSize(doc.fileSize)}</span>
+                              <span aria-hidden>·</span>
+                              <span>{formatDocDate(doc.createdAt)}</span>
+                              <span aria-hidden>·</span>
+                              <span className="flex items-center gap-1.5 min-w-0">
+                                <span className="w-5 h-5 rounded-full bg-neutral-200 flex items-center justify-center text-[10px] font-medium text-neutral-600 shrink-0">
+                                  {uploaderInitials}
+                                </span>
+                                <span className="truncate">{uploaderName}</span>
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDownload(doc)}
+                              className="h-8 w-8 p-0"
+                              title="Download"
+                            >
+                              <Download className="w-4 h-4" />
+                            </Button>
+                            {canUpload && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteDocument(doc._id)}
+                                disabled={deletingId === doc._id}
+                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Delete"
+                              >
+                                {deletingId === doc._id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-4 h-4" />
+                                )}
+                              </Button>
                             )}
-                          </Button>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
           </div>
+          </div>
+
+          {/* Workspace chat — sidebar on xl */}
+          <aside className="xl:sticky xl:top-20">
+            <WorkspaceChatPanel
+              messages={chatMessages}
+              status={chatStatus}
+              errorMessage={chatError}
+              onSend={sendChatMessage}
+              onReconnect={reconnectChat}
+              currentUserId={currentUser?.id}
+            />
+          </aside>
         </div>
       </div>
     </main>

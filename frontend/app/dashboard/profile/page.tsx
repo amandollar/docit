@@ -82,7 +82,7 @@ export default function ProfilePage() {
   return (
     <main className="min-h-screen bg-[#FDFBF7]">
       <DashboardHeader />
-      <div className="container mx-auto px-4 py-8 lg:py-10">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-10 max-w-6xl">
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-2 text-neutral-600 hover:text-neutral-900 text-sm mb-6 font-medium transition-colors"
@@ -91,7 +91,7 @@ export default function ProfilePage() {
           Back to dashboard
         </Link>
 
-        <div className="max-w-3xl space-y-6">
+        <div className="max-w-2xl space-y-6">
           {/* Profile photo — standard card */}
           <div className="bg-white border border-neutral-200 rounded-lg shadow-sm p-6">
             <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wide flex items-center gap-2 mb-4">

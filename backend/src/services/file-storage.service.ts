@@ -153,6 +153,7 @@ class FileStorageService {
       const downloadResponse = await b2.downloadFileByName({
         bucketName,
         fileName,
+        responseType: 'arraybuffer', // required for binary content; otherwise axios can return empty/corrupt data
       });
 
       const data = downloadResponse.data;

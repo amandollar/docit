@@ -21,7 +21,7 @@ export function DashboardHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-neutral-200/80 bg-[#FDFBF7]/95 backdrop-blur-sm">
-      <div className="container mx-auto px-4 h-14 flex items-center justify-between">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-6xl h-14 flex items-center justify-between">
         <Link
           href="/dashboard"
           className="font-bold text-lg flex items-center gap-2 text-neutral-900"

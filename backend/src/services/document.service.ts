@@ -10,7 +10,8 @@ export async function uploadDocument(
   workspaceId: string,
   uploadedBy: IUser,
   localFilePath: string,
-  originalFilename: string
+  originalFilename: string,
+  mimeType: string
 ): Promise<IDocument | null> {
   const role = await getMemberRole(workspaceId, uploadedBy._id.toString());
   if (!role || (role !== 'admin' && role !== 'editor')) return null;
@@ -23,19 +24,19 @@ export async function uploadDocument(
   const result = await fileStorageService.uploadFileBuffer(
     fileBuffer,
     safeName,
-    'application/pdf',
+    mimeType,
     folderPath
   );
   await fs.unlink(localFilePath).catch(() => {});
 
-  const title = originalFilename.replace(/\.pdf$/i, '') || originalFilename;
+  const title = originalFilename.replace(/\.[^.]+$/i, '') || originalFilename;
   const doc = await Document.create({
     title,
     filename: originalFilename,
     filePath: result.filePath,
     fileId: result.fileId,
     fileSize: result.fileSize,
-    mimeType: 'application/pdf',
+    mimeType,
     workspace: workspaceId,
     uploadedBy: uploadedBy._id,
   });

@@ -40,6 +40,8 @@ interface AuthContextValue extends AuthState {
   updateProfile: (data: { name?: string; avatar?: string }) => Promise<{ success: boolean; error?: string }>;
   uploadAvatar: (file: File) => Promise<{ success: boolean; error?: string }>;
   getAccessToken: () => string | null;
+  /** Try to refresh the access token using stored refresh token. On success updates state and returns new token; on failure clears session and returns null. */
+  refreshAndGetToken: () => Promise<string | null>;
   isAuthenticated: boolean;
 }
 
@@ -116,13 +118,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const getAccessToken = useCallback((): string | null => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(STORAGE_KEYS.accessToken);
+  }, []);
+
+  const refreshAndGetToken = useCallback(async (): Promise<string | null> => {
+    const { user, refreshToken } = loadStored();
+    if (!refreshToken || !user) return null;
+    const result = await refreshAccessToken(refreshToken);
+    if (!result.success) {
+      clearStorage();
+      setState({ user: null, accessToken: null, loading: false, error: null });
+      return null;
+    }
+    persist(user, result.data.accessToken, refreshToken, result.data.expiresIn);
+    setState((s) => (s.user ? { ...s, accessToken: result.data.accessToken } : s));
+    return result.data.accessToken;
+  }, []);
+
   const updateProfile = useCallback(
     async (data: { name?: string; avatar?: string }) => {
-      const token = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEYS.accessToken) : null;
-      if (!token) return { success: false, error: "Not authenticated" };
-      const result = await patchMe(token, data);
+      let token = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEYS.accessToken) : null;
+      if (!token) token = await refreshAndGetToken();
+      if (!token) return { success: false, error: "Session expired. Please sign in again." };
+      let result = await patchMe(token, data);
+      if (!result.success && result.error?.code === "UNAUTHORIZED") {
+        const newToken = await refreshAndGetToken();
+        if (newToken) result = await patchMe(newToken, data);
+      }
       if (!result.success) {
-        return { success: false, error: result.error.message };
+        return { success: false, error: result.error?.message ?? "Update failed" };
       }
       const updatedUser = result.data;
       setState((s) => (s.user ? { ...s, user: updatedUser } : s));
@@ -133,21 +159,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return { success: true };
     },
-    []
+    [refreshAndGetToken]
   );
 
-  const getAccessToken = useCallback((): string | null => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(STORAGE_KEYS.accessToken);
-  }, []);
-
-  const uploadAvatar = useCallback(async (file: File) => {
-    const token = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEYS.accessToken) : null;
-    if (!token) return { success: false, error: "Not authenticated" };
-    const result = await uploadAvatarPhoto(token, file);
-    if (!result.success) {
-      return { success: false, error: result.error.message };
-    }
+  const uploadAvatar = useCallback(
+    async (file: File) => {
+      let token = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEYS.accessToken) : null;
+      if (!token) token = await refreshAndGetToken();
+      if (!token) return { success: false, error: "Session expired. Please sign in again." };
+      let result = await uploadAvatarPhoto(token, file);
+      if (!result.success && result.error?.code === "UNAUTHORIZED") {
+        const newToken = await refreshAndGetToken();
+        if (newToken) result = await uploadAvatarPhoto(newToken, file);
+      }
+      if (!result.success) {
+        return { success: false, error: result.error?.message ?? "Upload failed" };
+      }
     const updatedUser = result.data;
     setState((s) => (s.user ? { ...s, user: updatedUser } : s));
     try {
@@ -156,7 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ignore
     }
     return { success: true };
-  }, []);
+  }, [refreshAndGetToken]);
 
   // On mount: restore from storage and validate with /me; on 401 try refresh
   useEffect(() => {
@@ -211,9 +238,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateProfile,
       uploadAvatar,
       getAccessToken,
+      refreshAndGetToken,
       isAuthenticated: !!state.user && !!state.accessToken,
     }),
-    [state, loginWithGoogle, logout, setAuthFromCallback, updateProfile, uploadAvatar, getAccessToken]
+    [state, loginWithGoogle, logout, setAuthFromCallback, updateProfile, uploadAvatar, getAccessToken, refreshAndGetToken]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

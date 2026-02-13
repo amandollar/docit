@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
@@ -10,7 +10,8 @@ import type { Workspace } from "@/types/workspace";
 import { ArrowLeft, FolderOpen, Plus, Loader2, ChevronRight } from "lucide-react";
 
 export default function WorkspacesPage() {
-  const { user, isAuthenticated, loading: authLoading, getAccessToken } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, getAccessToken, refreshAndGetToken } = useAuth();
+  const auth = useMemo(() => ({ getAccessToken, refreshAndGetToken }), [getAccessToken, refreshAndGetToken]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,15 +22,13 @@ export default function WorkspacesPage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const fetchWorkspaces = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
     setLoading(true);
     setError(null);
-    const res = await listWorkspaces(token);
+    const res = await listWorkspaces(auth);
     setLoading(false);
     if (res.success) setWorkspaces(res.data);
     else setError(res.error?.message ?? "Failed to load workspaces");
-  }, [getAccessToken]);
+  }, [auth]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -41,11 +40,10 @@ export default function WorkspacesPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = getAccessToken();
-    if (!token || !createName.trim()) return;
+    if (!createName.trim()) return;
     setCreateError(null);
     setCreating(true);
-    const res = await createWorkspace(token, createName.trim(), createDescription.trim() || undefined);
+    const res = await createWorkspace(auth, createName.trim(), createDescription.trim() || undefined);
     setCreating(false);
     if (res.success) {
       setWorkspaces((prev) => [res.data!, ...prev]);
@@ -69,21 +67,23 @@ export default function WorkspacesPage() {
   return (
     <main className="min-h-screen bg-[#FDFBF7]">
       <DashboardHeader />
-      <div className="container mx-auto px-4 py-12 lg:py-16">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16 max-w-6xl">
         <Link
           href="/dashboard"
-          className="inline-flex items-center gap-2 text-neutral-600 hover:text-neutral-900 text-sm mb-10 font-medium transition-colors"
+          className="inline-flex items-center gap-2 text-neutral-600 hover:text-neutral-900 text-sm mb-8 font-medium transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to dashboard
         </Link>
 
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-neutral-900 mb-2">
-          Your <span className="font-hand text-4xl md:text-5xl text-neutral-800">workspaces</span>
-        </h1>
-        <p className="text-xl text-neutral-600 mb-10 max-w-xl font-hand text-lg">
-          Create workspaces to organize documents and collaborate with your team.
-        </p>
+        <div className="mb-10">
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-neutral-900 mb-2">
+            Your <span className="font-hand text-4xl md:text-5xl text-neutral-800">workspaces</span>
+          </h1>
+          <p className="text-xl text-neutral-600 font-hand text-lg max-w-2xl">
+            Create workspaces to organize documents and collaborate with your team.
+          </p>
+        </div>
 
         <div className="flex flex-wrap items-center gap-4 mb-8">
           <Button onClick={() => setShowCreate(true)}>
@@ -165,7 +165,7 @@ export default function WorkspacesPage() {
             </Button>
           </div>
         ) : (
-          <ul className="space-y-2 max-w-3xl">
+          <ul className="space-y-2 max-w-4xl">
             {workspaces.map((ws) => (
               <li key={ws._id}>
                 <Link

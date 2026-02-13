@@ -14,12 +14,26 @@ const storage = multer.diskStorage({
   },
 });
 
-// File filter - only PDFs
+// Allowed document types (B2 supports any format; we restrict for security/UX)
+export const ALLOWED_DOCUMENT_MIMES = [
+  'application/pdf',
+  'application/msword',                                                                 // .doc
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',           // .docx
+  'application/vnd.ms-excel',                                                            // .xls
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',                  // .xlsx
+  'text/plain',
+  'text/csv',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+] as const;
+
 const fileFilter = (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  if (file.mimetype === 'application/pdf') {
+  if (ALLOWED_DOCUMENT_MIMES.includes(file.mimetype as typeof ALLOWED_DOCUMENT_MIMES[number])) {
     cb(null, true);
   } else {
-    cb(new Error('Only PDF files are allowed'));
+    cb(new Error('Only documents are allowed (PDF, Word, Excel, text, CSV, images)'));
   }
 };
 
