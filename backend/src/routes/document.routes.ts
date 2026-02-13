@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import * as documentController from '../controllers/document.controller';
 import { requireAuth } from '../middleware/auth.middleware';
 import { validateParamId } from '../middleware/validateId.middleware';
@@ -9,7 +9,7 @@ const router = Router();
 router.use(requireAuth);
 
 // Upload: multipart form with field "file" (PDF) and "workspaceId" – multer errors passed to error handler
-router.post('/upload', (req, res, next) => {
+router.post('/upload', (req: Request, res: Response, next: NextFunction) => {
   upload.single('file')(req, res, (err: unknown) => {
     if (err) return next(err);
     next();
@@ -17,7 +17,7 @@ router.post('/upload', (req, res, next) => {
 }, documentController.upload);
 
 // One-off summarize: upload a file, get AI summary (no workspace, no storage)
-router.post('/summarize-file', (req, res, next) => {
+router.post('/summarize-file', (req: Request, res: Response, next: NextFunction) => {
   upload.single('file')(req, res, (err: unknown) => {
     if (err) return next(err);
     next();

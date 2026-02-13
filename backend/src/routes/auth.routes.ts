@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import * as authController from '../controllers/auth.controller';
 import { requireAuth } from '../middleware/auth.middleware';
 import { avatarUpload } from '../config/multer';
@@ -16,7 +16,7 @@ router.get('/me', requireAuth, authController.me);
 router.patch('/me', requireAuth, authController.updateProfile);
 
 // Avatar upload: multipart "avatar" (image), max 2MB
-router.post('/me/avatar', requireAuth, (req, res, next) => {
+router.post('/me/avatar', requireAuth, (req: Request, res: Response, next: NextFunction) => {
   avatarUpload.single('avatar')(req, res, (err: unknown) => {
     if (err) return next(err);
     next();
