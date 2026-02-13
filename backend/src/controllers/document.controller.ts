@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import Document from '../models/Document';
 import * as documentService from '../services/document.service';
+import { generateSummary, streamDocumentAnswerToResponse } from '../services/ai/vercel-ai.service';
+import { extractTextFromBuffer } from '../utils/extract-text';
 import { isValidObjectId } from '../utils/validators';
 import logger from '../utils/logger';
 
@@ -104,6 +106,53 @@ export async function download(req: Request, res: Response): Promise<void> {
   } catch (error) {
     logger.error('document download error:', error);
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Download failed' } });
+  }
+}
+
+export async function summarize(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      return;
+    }
+    const docMeta = await documentService.getDocumentForAi(req.params.id, user._id.toString());
+    if (!docMeta) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Document not found' } });
+      return;
+    }
+    const text = await extractTextFromBuffer(docMeta.buffer, docMeta.mimeType);
+    const summary = await generateSummary(docMeta.title, text);
+    await documentService.updateDocumentSummary(req.params.id, user._id.toString(), summary);
+    res.json({ success: true, data: { summary } });
+  } catch (error) {
+    logger.error('document summarize error:', error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Summarization failed' } });
+  }
+}
+
+export async function ask(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      return;
+    }
+    const question = (req.body?.question ?? req.body?.message ?? '').trim();
+    if (!question) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'question is required' } });
+      return;
+    }
+    const docMeta = await documentService.getDocumentForAi(req.params.id, user._id.toString());
+    if (!docMeta) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Document not found' } });
+      return;
+    }
+    const text = await extractTextFromBuffer(docMeta.buffer, docMeta.mimeType);
+    await streamDocumentAnswerToResponse(docMeta.title, text, question, res);
+  } catch (error) {
+    logger.error('document ask error:', error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Ask failed' } });
   }
 }
 

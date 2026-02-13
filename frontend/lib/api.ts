@@ -469,6 +469,73 @@ export async function getDocument(
   return request<Document>(`/api/documents/${id}`, { token });
 }
 
+/** POST /api/documents/:id/summarize – AI summary (Vercel AI SDK + Gemini). Returns and stores summary on document. */
+export async function summarizeDocument(
+  tokenOrAuth: string | AuthHelpers,
+  id: string
+): Promise<
+  | { success: true; data: { summary: string } }
+  | { success: false; error: { code: string; message: string } }
+> {
+  type Result = { success: true; data: { summary: string } } | { success: false; error: { code: string; message: string } };
+  const run = async (token: string): Promise<Result> => {
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/api/documents/${id}/summarize`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      const message =
+        err instanceof TypeError && err.message === "Failed to fetch"
+          ? "Could not reach the server."
+          : err instanceof Error ? err.message : "Network error";
+      return { success: false, error: { code: "NETWORK_ERROR", message } };
+    }
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) return { success: false, error: json?.error ?? { code: "REQUEST_FAILED", message: res.statusText } };
+    return { success: true, data: { summary: (json as { data?: { summary?: string } }).data?.summary ?? "" } };
+  };
+  if (typeof tokenOrAuth === "string") return run(tokenOrAuth);
+  return withAuthRetry(run, tokenOrAuth);
+}
+
+/** POST /api/documents/:id/ask – streamed answer (Vercel AI SDK + Gemini). Reads full response as text. */
+export async function askDocument(
+  tokenOrAuth: string | AuthHelpers,
+  id: string,
+  question: string
+): Promise<
+  | { success: true; data: { text: string } }
+  | { success: false; error: { code: string; message: string } }
+> {
+  type Result = { success: true; data: { text: string } } | { success: false; error: { code: string; message: string } };
+  const run = async (token: string): Promise<Result> => {
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/api/documents/${id}/ask`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ question: question.trim() }),
+      });
+    } catch (err) {
+      const message =
+        err instanceof TypeError && err.message === "Failed to fetch"
+          ? "Could not reach the server."
+          : err instanceof Error ? err.message : "Network error";
+      return { success: false, error: { code: "NETWORK_ERROR", message } };
+    }
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      return { success: false, error: json?.error ?? { code: "REQUEST_FAILED", message: res.statusText } };
+    }
+    const text = await res.text();
+    return { success: true, data: { text } };
+  };
+  if (typeof tokenOrAuth === "string") return run(tokenOrAuth);
+  return withAuthRetry(run, tokenOrAuth);
+}
+
 /** GET /api/documents/:id/download. Pass auth from useAuth() for auto refresh. */
 export async function downloadDocument(
   tokenOrAuth: string | AuthHelpers,

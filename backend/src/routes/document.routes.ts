@@ -25,6 +25,12 @@ router.get('/:id', validateParamId('id'), documentController.getById);
 // Download file
 router.get('/:id/download', validateParamId('id'), documentController.download);
 
+// AI: generate summary (Vercel AI SDK + Gemini)
+router.post('/:id/summarize', validateParamId('id'), documentController.summarize);
+
+// AI: stream answer to a question about the document
+router.post('/:id/ask', validateParamId('id'), documentController.ask);
+
 // Delete document
 router.delete('/:id', validateParamId('id'), documentController.remove);
 

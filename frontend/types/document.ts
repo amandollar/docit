@@ -13,6 +13,8 @@ export interface Document {
   fileId: string;
   fileSize: number;
   mimeType: string;
+  /** AI-generated summary (Vercel AI SDK + Gemini) */
+  summary?: string;
   workspace: string;
   uploadedBy: DocumentUploadedBy | string;
   createdAt: string;

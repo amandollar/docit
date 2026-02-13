@@ -17,12 +17,14 @@ import {
   uploadDocument,
   downloadDocument,
   deleteDocument,
+  summarizeDocument,
+  askDocument,
 } from "@/lib/api";
 import type { Workspace, WorkspaceMemberRole } from "@/types/workspace";
 import type { Document } from "@/types/document";
 import { useWorkspaceChat } from "@/lib/use-workspace-chat";
 import { WorkspaceChatPanel } from "@/components/dashboard/workspace-chat-panel";
-import { ArrowLeft, FileText, Pencil, Trash2, Loader2, Upload, Download, UserPlus, Users, FileStack } from "lucide-react";
+import { ArrowLeft, FileText, Pencil, Trash2, Loader2, Upload, Download, UserPlus, Users, FileStack, Sparkles, MessageCircle } from "lucide-react";
 import { isAllowedFile, ALLOWED_ACCEPT, SUPPORTED_TYPES_LABEL } from "@/lib/document-types";
 
 export default function WorkspaceDetailPage() {
@@ -50,6 +52,11 @@ export default function WorkspaceDetailPage() {
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [summarizingId, setSummarizingId] = useState<string | null>(null);
+  const [askDocId, setAskDocId] = useState<string | null>(null);
+  const [askQuestion, setAskQuestion] = useState("");
+  const [askAnswer, setAskAnswer] = useState<string | null>(null);
+  const [askLoading, setAskLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -196,6 +203,25 @@ export default function WorkspaceDetailPage() {
     const res = await deleteDocument(auth, docId);
     setDeletingId(null);
     if (res.success) setDocuments((prev) => prev.filter((d) => d._id !== docId));
+  };
+
+  const handleSummarize = async (doc: Document) => {
+    setSummarizingId(doc._id);
+    const res = await summarizeDocument(auth, doc._id);
+    setSummarizingId(null);
+    if (res.success)
+      setDocuments((prev) => prev.map((d) => (d._id === doc._id ? { ...d, summary: res.data.summary } : d)));
+    else setUploadError(res.error?.message ?? "Summarization failed");
+  };
+
+  const handleAsk = async (docId: string) => {
+    if (!askQuestion.trim()) return;
+    setAskLoading(true);
+    setAskAnswer(null);
+    const res = await askDocument(auth, docId, askQuestion.trim());
+    setAskLoading(false);
+    if (res.success) setAskAnswer(res.data.text);
+    else setAskAnswer(`Error: ${res.error?.message ?? "Request failed"}`);
   };
 
   // Collaboration: current user is admin if they are owner or have admin role in members
@@ -605,51 +631,113 @@ export default function WorkspaceDetailPage() {
                       return (
                         <li
                           key={doc._id}
-                          className="group flex items-center gap-4 px-4 py-3 hover:bg-neutral-50/80 transition-colors"
+                          className="group flex flex-col gap-0 px-4 py-3 hover:bg-neutral-50/80 transition-colors"
                         >
-                          <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
-                            <FileText className="w-5 h-5 text-red-600/80" />
-                          </div>
-                          <div className="min-w-0 flex-1 grid grid-cols-1 sm:grid-cols-[1fr_auto] sm:items-center gap-0.5 sm:gap-4">
-                            <p className="font-medium text-neutral-900 truncate">{doc.title}</p>
-                            <div className="flex items-center gap-2 text-xs text-neutral-500 sm:text-right">
-                              <span>{formatFileSize(doc.fileSize)}</span>
-                              <span aria-hidden>·</span>
-                              <span>{formatDocDate(doc.createdAt)}</span>
-                              <span aria-hidden>·</span>
-                              <span className="flex items-center gap-1.5 min-w-0">
-                                <span className="w-5 h-5 rounded-full bg-neutral-200 flex items-center justify-center text-[10px] font-medium text-neutral-600 shrink-0">
-                                  {uploaderInitials}
-                                </span>
-                                <span className="truncate">{uploaderName}</span>
-                              </span>
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                              <FileText className="w-5 h-5 text-red-600/80" />
                             </div>
-                          </div>
-                          <div className="flex items-center gap-0.5 shrink-0">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDownload(doc)}
-                              className="h-8 w-8 p-0"
-                              title="Download"
-                            >
-                              <Download className="w-4 h-4" />
-                            </Button>
-                            {canUpload && (
+                            <div className="min-w-0 flex-1 grid grid-cols-1 sm:grid-cols-[1fr_auto] sm:items-center gap-0.5 sm:gap-4">
+                              <p className="font-medium text-neutral-900 truncate">{doc.title}</p>
+                              <div className="flex items-center gap-2 text-xs text-neutral-500 sm:text-right">
+                                <span>{formatFileSize(doc.fileSize)}</span>
+                                <span aria-hidden>·</span>
+                                <span>{formatDocDate(doc.createdAt)}</span>
+                                <span aria-hidden>·</span>
+                                <span className="flex items-center gap-1.5 min-w-0">
+                                  <span className="w-5 h-5 rounded-full bg-neutral-200 flex items-center justify-center text-[10px] font-medium text-neutral-600 shrink-0">
+                                    {uploaderInitials}
+                                  </span>
+                                  <span className="truncate">{uploaderName}</span>
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-0.5 shrink-0">
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleDeleteDocument(doc._id)}
-                                disabled={deletingId === doc._id}
-                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                title="Delete"
+                                onClick={() => handleSummarize(doc)}
+                                disabled={summarizingId === doc._id}
+                                className="h-8 w-8 p-0 text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                                title="AI Summarize"
                               >
-                                {deletingId === doc._id ? (
+                                {summarizingId === doc._id ? (
                                   <Loader2 className="w-4 h-4 animate-spin" />
                                 ) : (
-                                  <Trash2 className="w-4 h-4" />
+                                  <Sparkles className="w-4 h-4" />
                                 )}
                               </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDownload(doc)}
+                                className="h-8 w-8 p-0"
+                                title="Download"
+                              >
+                                <Download className="w-4 h-4" />
+                              </Button>
+                              {canUpload && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteDocument(doc._id)}
+                                  disabled={deletingId === doc._id}
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  title="Delete"
+                                >
+                                  {deletingId === doc._id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          {doc.summary && (
+                            <div className="pl-14 pr-2 pb-1">
+                              <p className="text-sm text-neutral-600 line-clamp-3">{doc.summary}</p>
+                            </div>
+                          )}
+                          <div className="pl-14 pr-2 pb-2 space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAskDocId(askDocId === doc._id ? null : doc._id);
+                                setAskQuestion("");
+                                setAskAnswer(null);
+                              }}
+                              className="flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-700"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              {askDocId === doc._id ? "Hide ask" : "Ask about this doc"}
+                            </button>
+                            {askDocId === doc._id && (
+                              <div className="flex flex-col gap-2">
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    value={askQuestion}
+                                    onChange={(e) => setAskQuestion(e.target.value)}
+                                    onKeyDown={(e) => e.key === "Enter" && handleAsk(doc._id)}
+                                    placeholder="Ask a question about this document…"
+                                    className="flex-1 min-w-0 rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                                  />
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleAsk(doc._id)}
+                                    disabled={askLoading || !askQuestion.trim()}
+                                    className="shrink-0 bg-violet-600 hover:bg-violet-700"
+                                  >
+                                    {askLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ask"}
+                                  </Button>
+                                </div>
+                                {askAnswer !== null && (
+                                  <div className="rounded-lg bg-neutral-50 border border-neutral-100 p-3 text-sm text-neutral-700 whitespace-pre-wrap">
+                                    {askAnswer}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         </li>

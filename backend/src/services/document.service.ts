@@ -88,6 +88,29 @@ export async function getDownloadStream(documentId: string, userId: string): Pro
   };
 }
 
+export async function getDocumentForAi(documentId: string, userId: string): Promise<{ buffer: Buffer; mimeType: string; title: string } | null> {
+  const doc = await Document.findById(documentId);
+  if (!doc) return null;
+  const role = await getMemberRole(doc.workspace.toString(), userId);
+  if (!role) return null;
+  const buffer = await fileStorageService.downloadFile(doc.filePath);
+  return {
+    buffer,
+    mimeType: doc.mimeType,
+    title: doc.title,
+  };
+}
+
+export async function updateDocumentSummary(documentId: string, userId: string, summary: string): Promise<boolean> {
+  const doc = await Document.findById(documentId);
+  if (!doc) return false;
+  const role = await getMemberRole(doc.workspace.toString(), userId);
+  if (!role) return false;
+  doc.summary = summary;
+  await doc.save();
+  return true;
+}
+
 export async function removeDocument(documentId: string, userId: string): Promise<boolean> {
   const doc = await Document.findById(documentId);
   if (!doc) return false;

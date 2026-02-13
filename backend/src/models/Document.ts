@@ -7,6 +7,8 @@ export interface IDocument extends Document {
   fileId: string; // Backblaze B2 fileId for delete
   fileSize: number;
   mimeType: string;
+  /** AI-generated summary (Vercel AI SDK + Gemini) */
+  summary?: string;
   workspace: mongoose.Types.ObjectId;
   uploadedBy: mongoose.Types.ObjectId;
   createdAt: Date;
@@ -39,6 +41,10 @@ const DocumentSchema = new Schema<IDocument>(
     mimeType: {
       type: String,
       default: 'application/pdf',
+    },
+    summary: {
+      type: String,
+      default: undefined,
     },
     workspace: {
       type: Schema.Types.ObjectId,
