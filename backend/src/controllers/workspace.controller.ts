@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import * as workspaceService from '../services/workspace.service';
+import { isValidObjectId } from '../utils/validators';
 import logger from '../utils/logger';
+import User from '../models/User';
 
 export async function create(req: Request, res: Response): Promise<void> {
   try {
@@ -69,10 +71,14 @@ export async function update(req: Request, res: Response): Promise<void> {
       res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
       return;
     }
+    const { name, description } = req.body;
+    const updates: { name?: string; description?: string } = {};
+    if (typeof name === 'string' && name.trim()) updates.name = name.trim();
+    if (req.body.hasOwnProperty('description')) updates.description = typeof description === 'string' ? description.trim() : undefined;
     const workspace = await workspaceService.updateWorkspace(
       req.params.id,
       user._id.toString(),
-      req.body
+      updates
     );
     if (!workspace) {
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Workspace not found or no permission' } });
@@ -104,6 +110,45 @@ export async function remove(req: Request, res: Response): Promise<void> {
   }
 }
 
+/**
+ * Invite a user to the workspace by email. They must already have a DOCIT account (signed up via Google).
+ */
+export async function inviteByEmail(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      return;
+    }
+    const { email, role } = req.body;
+    const emailStr = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    if (!emailStr) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Email is required' } });
+      return;
+    }
+    const invitedUser = await User.findOne({ email: emailStr }).select('_id').lean();
+    if (!invitedUser) {
+      res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'No user found with that email. They need to sign in to DOCIT first.' } });
+      return;
+    }
+    const validRole = ['admin', 'editor', 'viewer'].includes(role) ? role : 'viewer';
+    const workspace = await workspaceService.addMember(
+      req.params.id,
+      user._id.toString(),
+      invitedUser._id.toString(),
+      validRole
+    );
+    if (!workspace) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Workspace not found or no permission' } });
+      return;
+    }
+    res.json({ success: true, data: workspace });
+  } catch (error) {
+    logger.error('workspace inviteByEmail error:', error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to invite member' } });
+  }
+}
+
 export async function addMember(req: Request, res: Response): Promise<void> {
   try {
     const user = req.user;
@@ -112,8 +157,8 @@ export async function addMember(req: Request, res: Response): Promise<void> {
       return;
     }
     const { userId, role } = req.body;
-    if (!userId) {
-      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'userId is required' } });
+    if (!userId || !isValidObjectId(String(userId))) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Valid userId is required' } });
       return;
     }
     const validRole = ['admin', 'editor', 'viewer'].includes(role) ? role : 'viewer';

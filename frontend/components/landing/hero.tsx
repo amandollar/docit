@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Sticker } from "@/components/ui/sticker";
 import { motion } from "framer-motion";
 import { ArrowRight, FileText, Search, ShieldAlert } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import Link from "next/link";
 
 export function Hero() {
+    const { isAuthenticated, loginWithGoogle, loading } = useAuth();
     return (
         <section className="relative overflow-hidden py-20 lg:py-32">
             <div className="container mx-auto px-4 relative z-10 flex flex-col items-center text-center">
@@ -77,11 +80,30 @@ export function Hero() {
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-                        <Button size="lg" className="h-14 px-8 text-lg shadow-xl shadow-neutral-500/10">
-                            Get Started
-                            <ArrowRight className="ml-2 w-5 h-5" />
-                        </Button>
-                        <Button variant="outline" size="lg" className="h-14 px-8 text-lg">
+                        {isAuthenticated ? (
+                            <Link href="/dashboard">
+                                <Button size="lg" className="h-14 px-8 text-lg shadow-xl shadow-neutral-500/10">
+                                    Go to Dashboard
+                                    <ArrowRight className="ml-2 w-5 h-5" />
+                                </Button>
+                            </Link>
+                        ) : (
+                            <Button
+                                size="lg"
+                                className="h-14 px-8 text-lg shadow-xl shadow-neutral-500/10"
+                                onClick={loginWithGoogle}
+                                disabled={loading}
+                            >
+                                Get Started
+                                <ArrowRight className="ml-2 w-5 h-5" />
+                            </Button>
+                        )}
+                        <Button
+                            variant="outline"
+                            size="lg"
+                            className="h-14 px-8 text-lg"
+                            onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}
+                        >
                             View Demo
                         </Button>
                     </div>

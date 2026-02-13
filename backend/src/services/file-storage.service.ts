@@ -1,9 +1,14 @@
 import fs from 'fs/promises';
-import path from 'path';
-import B2 from 'backblaze-b2';
 import { getB2Instance, getB2BucketId, getB2BucketName, getB2Endpoint } from '../config/backblaze-b2';
-import env from '../config/env';
 import logger from '../utils/logger';
+
+interface B2FileItem {
+  fileId: string;
+  fileName: string;
+  contentType?: string;
+  contentLength: number;
+  uploadTimestamp: number;
+}
 
 export interface UploadResult {
   fileId: string;
@@ -23,14 +28,8 @@ export interface FileMetadata {
 }
 
 class FileStorageService {
-  private bucketId: string;
-  private bucketName: string;
-  private endpoint: string;
-
-  constructor() {
-    this.bucketId = getB2BucketId();
-    this.bucketName = getB2BucketName();
-    this.endpoint = getB2Endpoint();
+  private get bucketName(): string {
+    return getB2BucketName();
   }
 
   /**
@@ -44,6 +43,7 @@ class FileStorageService {
   ): Promise<UploadResult> {
     try {
       const b2 = await getB2Instance();
+      const bucketId = getB2BucketId();
       
       // Read file buffer
       const fileBuffer = await fs.readFile(filePath);
@@ -56,7 +56,7 @@ class FileStorageService {
 
       // Get upload URL
       const uploadUrlResponse = await b2.getUploadUrl({
-        bucketId: this.bucketId,
+        bucketId,
       });
 
       const { uploadUrl, authorizationToken } = uploadUrlResponse.data;
@@ -100,6 +100,7 @@ class FileStorageService {
   ): Promise<UploadResult> {
     try {
       const b2 = await getB2Instance();
+      const bucketId = getB2BucketId();
       
       const fileSize = fileBuffer.length;
       const b2FileName = folderPath 
@@ -108,7 +109,7 @@ class FileStorageService {
 
       // Get upload URL
       const uploadUrlResponse = await b2.getUploadUrl({
-        bucketId: this.bucketId,
+        bucketId,
       });
 
       const { uploadUrl, authorizationToken } = uploadUrlResponse.data;
@@ -147,13 +148,15 @@ class FileStorageService {
   async downloadFile(fileName: string): Promise<Buffer> {
     try {
       const b2 = await getB2Instance();
+      const bucketName = this.bucketName;
       
       const downloadResponse = await b2.downloadFileByName({
-        bucketName: this.bucketName,
+        bucketName,
         fileName,
       });
 
-      return Buffer.from(downloadResponse.data);
+      const data = downloadResponse.data;
+      return Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
     } catch (error) {
       logger.error(`Error downloading file from B2: ${fileName}`, error);
       throw new Error(`Failed to download file from B2: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -185,14 +188,15 @@ class FileStorageService {
   async getFileMetadata(fileName: string): Promise<FileMetadata | null> {
     try {
       const b2 = await getB2Instance();
+      const bucketId = getB2BucketId();
       
       const listResponse = await b2.listFileNames({
-        bucketId: this.bucketId,
+        bucketId,
         startFileName: fileName,
         maxFileCount: 1,
       });
 
-      const file = listResponse.data.files?.find(f => f.fileName === fileName);
+      const file = listResponse.data.files?.find((f: B2FileItem) => f.fileName === fileName);
       
       if (!file) {
         return null;
@@ -214,15 +218,9 @@ class FileStorageService {
   /**
    * Generate download URL (public or signed)
    */
-  generateDownloadUrl(fileName: string, expiresInSeconds?: number): string {
-    if (expiresInSeconds) {
-      // For signed URLs, you would need to implement URL signing
-      // This is a simplified version - you may need to use B2's authorizeDownloadUrl
-      return `${this.endpoint}/${this.bucketName}/${fileName}`;
-    }
-    
-    // Public URL
-    return `${this.endpoint}/${this.bucketName}/${fileName}`;
+  generateDownloadUrl(fileName: string, _expiresInSeconds?: number): string {
+    const endpoint = getB2Endpoint();
+    return `${endpoint}/file/${this.bucketName}/${fileName}`;
   }
 
   /**
@@ -234,9 +232,12 @@ class FileStorageService {
   ): Promise<string> {
     try {
       const b2 = await getB2Instance();
-      
+      if (!b2.getDownloadAuthorization) {
+        throw new Error('B2 getDownloadAuthorization not available');
+      }
+      const bucketId = getB2BucketId();
       const downloadAuthResponse = await b2.getDownloadAuthorization({
-        bucketId: this.bucketId,
+        bucketId,
         fileNamePrefix: fileName,
         validDurationInSeconds: expiresInSeconds,
       });
@@ -256,9 +257,10 @@ class FileStorageService {
   async listFiles(folderPath?: string, maxCount: number = 100): Promise<FileMetadata[]> {
     try {
       const b2 = await getB2Instance();
+      const bucketId = getB2BucketId();
       
       const listResponse = await b2.listFileNames({
-        bucketId: this.bucketId,
+        bucketId,
         startFileName: folderPath || '',
         maxFileCount: maxCount,
         prefix: folderPath,
@@ -266,7 +268,7 @@ class FileStorageService {
 
       const files = listResponse.data.files || [];
       
-      return files.map(file => ({
+      return files.map((file: B2FileItem) => ({
         fileId: file.fileId,
         fileName: file.fileName,
         contentType: file.contentType || 'application/octet-stream',

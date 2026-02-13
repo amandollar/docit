@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as workspaceController from '../controllers/workspace.controller';
 import { requireAuth } from '../middleware/auth.middleware';
+import { validateParamId } from '../middleware/validateId.middleware';
 
 const router = Router();
 
@@ -8,13 +9,14 @@ router.use(requireAuth);
 
 router.post('/', workspaceController.create);
 router.get('/', workspaceController.list);
-router.get('/:id', workspaceController.getById);
-router.patch('/:id', workspaceController.update);
-router.delete('/:id', workspaceController.remove);
+router.get('/:id', validateParamId('id'), workspaceController.getById);
+router.patch('/:id', validateParamId('id'), workspaceController.update);
+router.delete('/:id', validateParamId('id'), workspaceController.remove);
 
 // Collaboration
-router.post('/:id/members', workspaceController.addMember);
-router.delete('/:id/members/:userId', workspaceController.removeMember);
-router.patch('/:id/members/:userId/role', workspaceController.updateMemberRole);
+router.post('/:id/invite', validateParamId('id'), workspaceController.inviteByEmail);
+router.post('/:id/members', validateParamId('id'), workspaceController.addMember);
+router.delete('/:id/members/:userId', validateParamId('id'), validateParamId('userId'), workspaceController.removeMember);
+router.patch('/:id/members/:userId/role', validateParamId('id'), validateParamId('userId'), workspaceController.updateMemberRole);
 
 export default router;

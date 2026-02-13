@@ -46,7 +46,7 @@ export function Features() {
     return (
         <section className="py-24 overflow-hidden">
             <div className="container mx-auto px-4">
-                <div className="text-center mb-20 max-w-2xl mx-auto">
+                <div id="features" className="text-center mb-20 max-w-2xl mx-auto scroll-mt-24">
                     <span className="inline-block px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-medium mb-4">Features</span>
                     <h2 className="text-4xl font-bold mb-4 tracking-tight">Paperwork, without the work.</h2>
                     <p className="text-neutral-600 text-lg">Two powerful layers of intelligence working together.</p>

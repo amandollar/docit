@@ -1,6 +1,8 @@
+/// <reference path="./types/express.d.ts" />
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import env from './config/env';
 import logger from './utils/logger';
 import authRoutes from './routes/auth.routes';
@@ -35,8 +37,14 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
-// API routes
-app.use('/api/auth', authRoutes);
+// Rate limit auth endpoints to reduce abuse
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50, // per window
+  message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many requests' } },
+  standardHeaders: true,
+});
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/documents', documentRoutes);
 
@@ -52,13 +60,23 @@ app.use((_req: Request, res: Response) => {
 });
 
 // Error handler
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+app.use((err: Error & { code?: string; status?: number }, _req: Request, res: Response, _next: NextFunction) => {
   logger.error('Error:', err);
-  res.status(500).json({
+  // Multer errors (file size, type, etc.)
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    res.status(400).json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'File size exceeds limit' } });
+    return;
+  }
+  if (err.message?.includes('PDF') || err.code === 'LIMIT_UNEXPECTED_FILE') {
+    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: err.message || 'Invalid file' } });
+    return;
+  }
+  const status = err.status ?? 500;
+  res.status(status).json({
     success: false,
     error: {
-      code: 'INTERNAL_SERVER_ERROR',
-      message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
+      code: err.code ?? 'INTERNAL_SERVER_ERROR',
+      message: process.env.NODE_ENV === 'production' && status === 500 ? 'Internal server error' : err.message,
     },
   });
 });

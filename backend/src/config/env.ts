@@ -26,12 +26,15 @@ const envSchema = z.object({
   // Google Gemini (free tier)
   GEMINI_API_KEY: z.string().min(1),
   
-  // Backblaze B2
+  // Backblaze B2 (documents; bucket ID and endpoint are resolved from API)
   B2_APPLICATION_KEY_ID: z.string().min(1),
   B2_APPLICATION_KEY: z.string().min(1),
-  B2_BUCKET_ID: z.string().min(1),
   B2_BUCKET_NAME: z.string().min(1),
-  B2_ENDPOINT: z.string().url(),
+  
+  // Cloudinary (profile/avatar images; optional – if set, avatars use Cloudinary instead of B2)
+  CLOUDINARY_CLOUD_NAME: z.string().min(1).optional(),
+  CLOUDINARY_API_KEY: z.string().min(1).optional(),
+  CLOUDINARY_API_SECRET: z.string().min(1).optional(),
   
   // File Upload
   MAX_FILE_SIZE: z.string().default('10485760'),

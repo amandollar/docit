@@ -20,6 +20,7 @@
     "@google/generative-ai": "^0.21.0",
     "backblaze-b2": "^1.7.0",
     "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.9.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",

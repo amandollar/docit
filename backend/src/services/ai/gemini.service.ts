@@ -44,11 +44,8 @@ export async function generateWithInstruction(
 ): Promise<string> {
   try {
     const model = getModel(options?.model);
-    const result = await model.generateContent([
-      { role: 'user', parts: [{ text: systemInstruction }] },
-      { role: 'model', parts: [{ text: 'Understood.' }] },
-      { role: 'user', parts: [{ text: userContent }] },
-    ]);
+    const combinedPrompt = `${systemInstruction}\n\n---\n\n${userContent}`;
+    const result = await model.generateContent(combinedPrompt);
     const text = result.response.text();
     return text?.trim() ?? '';
   } catch (error) {

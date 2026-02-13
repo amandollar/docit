@@ -73,7 +73,6 @@ export async function createOrGetUser(profile: GoogleProfile): Promise<IUser> {
     user.googleId = profile.id;
     user.name = profile.name;
     user.avatar = profile.picture;
-    if (!user.password) user.password = undefined;
     await user.save();
     return user;
   }
@@ -97,11 +96,13 @@ export function generateTokens(user: IUser): { accessToken: string; refreshToken
     email: user.email,
     role: user.role,
   };
-  const accessToken = jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN });
+  const accessOpts = { expiresIn: env.JWT_EXPIRES_IN } as unknown as jwt.SignOptions;
+  const refreshOpts = { expiresIn: env.JWT_REFRESH_EXPIRES_IN } as unknown as jwt.SignOptions;
+  const accessToken = jwt.sign(payload, env.JWT_SECRET, accessOpts);
   const refreshToken = jwt.sign(
     { userId: user._id.toString(), type: 'refresh' },
     env.JWT_REFRESH_SECRET,
-    { expiresIn: env.JWT_REFRESH_EXPIRES_IN }
+    refreshOpts
   );
   return {
     accessToken,
@@ -124,4 +125,19 @@ export async function verifyRefreshToken(token: string): Promise<string> {
   const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET) as { userId: string; type: string };
   if (decoded.type !== 'refresh') throw new Error('Invalid refresh token');
   return decoded.userId;
+}
+
+/**
+ * Update current user profile (name, avatar). Email is read-only for Google users.
+ */
+export async function updateProfile(userId: string, data: { name?: string; avatar?: string }): Promise<IUser | null> {
+  const user = await User.findById(userId);
+  if (!user) return null;
+  if (data.name !== undefined) {
+    const trimmed = (data.name as string).trim();
+    if (trimmed.length > 0) user.name = trimmed;
+  }
+  if (data.avatar !== undefined) user.avatar = (data.avatar as string).trim() || undefined;
+  await user.save();
+  return user;
 }

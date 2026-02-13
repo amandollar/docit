@@ -1,6 +1,11 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth-context";
+import Link from "next/link";
 
 export function CTA() {
+    const { isAuthenticated, loginWithGoogle, loading } = useAuth();
     return (
         <section className="py-32 bg-white relative overflow-hidden border-t border-dashed border-neutral-300">
             <div className="container mx-auto px-4 text-center relative z-10">
@@ -9,7 +14,15 @@ export function CTA() {
                     Join the institutions using DOCIT to transform archives into intelligence.
                 </p>
                 <div className="flex justify-center gap-4">
-                    <Button size="lg" className="h-14 px-10 text-lg">Start Free Trial</Button>
+                    {isAuthenticated ? (
+                        <Link href="/dashboard">
+                            <Button size="lg" className="h-14 px-10 text-lg">Go to Dashboard</Button>
+                        </Link>
+                    ) : (
+                        <Button size="lg" className="h-14 px-10 text-lg" onClick={loginWithGoogle} disabled={loading}>
+                            Start Free Trial
+                        </Button>
+                    )}
                 </div>
             </div>
 

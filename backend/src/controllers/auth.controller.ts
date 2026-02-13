@@ -1,7 +1,22 @@
 import { Request, Response } from 'express';
 import * as authService from '../services/auth.service';
 import User from '../models/User';
+import fileStorageService from '../services/file-storage.service';
+import * as cloudinaryService from '../services/cloudinary.service';
 import logger from '../utils/logger';
+
+/** Avatar in DB is either a full URL (Google) or a B2 file path. Return a URL the frontend can use (signed for B2). */
+async function resolveAvatarUrl(avatar: string | undefined): Promise<string | undefined> {
+  if (!avatar) return undefined;
+  if (avatar.startsWith('http://') || avatar.startsWith('https://')) return avatar;
+  try {
+    const signed = await fileStorageService.generateSignedDownloadUrl(avatar, 7 * 24 * 60 * 60); // 7 days
+    return signed;
+  } catch (err) {
+    logger.warn('Could not generate signed avatar URL', { avatar, err });
+    return undefined;
+  }
+}
 
 /**
  * GET /api/auth/google
@@ -38,6 +53,7 @@ export async function googleCallback(req: Request, res: Response): Promise<void>
     const profile = await authService.getGoogleUserFromCode(code);
     const user = await authService.createOrGetUser(profile);
     const tokens = authService.generateTokens(user);
+    const avatarUrl = await resolveAvatarUrl(user.avatar);
     res.json({
       success: true,
       data: {
@@ -45,7 +61,7 @@ export async function googleCallback(req: Request, res: Response): Promise<void>
           id: user._id,
           email: user.email,
           name: user.name,
-          avatar: user.avatar,
+          avatar: avatarUrl,
           role: user.role,
         },
         ...tokens,
@@ -74,6 +90,52 @@ export async function me(req: Request, res: Response): Promise<void> {
       });
       return;
     }
+    const avatarUrl = await resolveAvatarUrl(user.avatar);
+    res.json({
+      success: true,
+      data: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        avatar: avatarUrl,
+        role: user.role,
+        workspaces: user.workspaces,
+      },
+    });
+  } catch (error) {
+    logger.error('me error:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'SERVER_ERROR', message: 'Failed to get user' },
+    });
+  }
+}
+
+/**
+ * POST /api/auth/me/avatar
+ * Multipart: single file field "avatar" (image). Uploads to Cloudinary, updates user.avatar. Requires JWT.
+ */
+export async function uploadAvatar(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Not authenticated' },
+      });
+      return;
+    }
+    const file = req.file as Express.Multer.File | undefined;
+    if (!file || !file.buffer) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'MISSING_FILE', message: 'No image file provided' },
+      });
+      return;
+    }
+    const imageUrl = await cloudinaryService.uploadProfileImage(file.buffer, file.originalname);
+    user.avatar = imageUrl;
+    await user.save();
     res.json({
       success: true,
       data: {
@@ -86,10 +148,64 @@ export async function me(req: Request, res: Response): Promise<void> {
       },
     });
   } catch (error) {
-    logger.error('me error:', error);
+    logger.error('uploadAvatar error:', error);
+    const message = error instanceof Error ? error.message : 'Failed to upload avatar';
     res.status(500).json({
       success: false,
-      error: { code: 'SERVER_ERROR', message: 'Failed to get user' },
+      error: { code: 'SERVER_ERROR', message },
+    });
+  }
+}
+
+/**
+ * PATCH /api/auth/me
+ * Body: { name?: string, avatar?: string }
+ * Update current user profile. Requires JWT.
+ */
+export async function updateProfile(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Not authenticated' },
+      });
+      return;
+    }
+    const name = req.body?.name as string | undefined;
+    const avatar = req.body?.avatar as string | undefined;
+    if (name === undefined && avatar === undefined) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'Provide at least one of name or avatar' },
+      });
+      return;
+    }
+    const updated = await authService.updateProfile(user._id.toString(), { name, avatar });
+    if (!updated) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'User not found' },
+      });
+      return;
+    }
+    const avatarUrl = await resolveAvatarUrl(updated.avatar);
+    res.json({
+      success: true,
+      data: {
+        id: updated._id,
+        email: updated.email,
+        name: updated.name,
+        avatar: avatarUrl,
+        role: updated.role,
+        workspaces: updated.workspaces,
+      },
+    });
+  } catch (error) {
+    logger.error('updateProfile error:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'SERVER_ERROR', message: 'Failed to update profile' },
     });
   }
 }

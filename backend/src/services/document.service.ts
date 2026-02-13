@@ -1,5 +1,4 @@
 import fs from 'fs/promises';
-import path from 'path';
 import Document, { IDocument } from '../models/Document';
 import Workspace from '../models/Workspace';
 import fileStorageService from './file-storage.service';

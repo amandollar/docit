@@ -1,5 +1,4 @@
-import mongoose from 'mongoose';
-import Workspace, { IWorkspace, IWorkspaceMember, WorkspaceMemberRole } from '../models/Workspace';
+import Workspace, { IWorkspace, WorkspaceMemberRole } from '../models/Workspace';
 import User from '../models/User';
 import Document from '../models/Document';
 import { IUser } from '../models/User';

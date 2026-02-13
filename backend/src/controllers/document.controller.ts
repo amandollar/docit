@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as documentService from '../services/document.service';
+import { isValidObjectId } from '../utils/validators';
 import logger from '../utils/logger';
 
 export async function upload(req: Request, res: Response): Promise<void> {
@@ -10,8 +11,8 @@ export async function upload(req: Request, res: Response): Promise<void> {
       return;
     }
     const workspaceId = req.body?.workspaceId ?? req.query?.workspaceId;
-    if (!workspaceId) {
-      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'workspaceId is required' } });
+    if (!workspaceId || !isValidObjectId(String(workspaceId))) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Valid workspaceId is required' } });
       return;
     }
     const file = req.file;
@@ -43,9 +44,9 @@ export async function list(req: Request, res: Response): Promise<void> {
       res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
       return;
     }
-    const workspaceId = req.params.workspaceId ?? req.query.workspaceId;
-    if (!workspaceId) {
-      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'workspaceId is required' } });
+    const workspaceId = req.params.workspaceId ?? req.query?.workspaceId;
+    if (!workspaceId || !isValidObjectId(String(workspaceId))) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Valid workspaceId is required' } });
       return;
     }
     const page = Math.max(1, parseInt(String(req.query.page)) || 1);
@@ -93,8 +94,9 @@ export async function download(req: Request, res: Response): Promise<void> {
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Document not found' } });
       return;
     }
+    const safeName = result.filename.replace(/[^\w\s.-]/g, '_').replace(/\s+/g, '_') || 'document.pdf';
     res.setHeader('Content-Type', result.mimeType);
-    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
     res.send(result.buffer);
   } catch (error) {
     logger.error('document download error:', error);
