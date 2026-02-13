@@ -1,0 +1,122 @@
+import { Request, Response } from 'express';
+import * as documentService from '../services/document.service';
+import logger from '../utils/logger';
+
+export async function upload(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      return;
+    }
+    const workspaceId = req.body?.workspaceId ?? req.query?.workspaceId;
+    if (!workspaceId) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'workspaceId is required' } });
+      return;
+    }
+    const file = req.file;
+    if (!file?.path) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'PDF file is required' } });
+      return;
+    }
+    const doc = await documentService.uploadDocument(
+      String(workspaceId),
+      user,
+      file.path,
+      file.originalname || 'document.pdf'
+    );
+    if (!doc) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'No access to workspace or not allowed to upload' } });
+      return;
+    }
+    res.status(201).json({ success: true, data: doc });
+  } catch (error) {
+    logger.error('document upload error:', error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Upload failed' } });
+  }
+}
+
+export async function list(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      return;
+    }
+    const workspaceId = req.params.workspaceId ?? req.query.workspaceId;
+    if (!workspaceId) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'workspaceId is required' } });
+      return;
+    }
+    const page = Math.max(1, parseInt(String(req.query.page)) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit)) || 20));
+    const result = await documentService.listByWorkspace(String(workspaceId), user._id.toString(), page, limit);
+    if (!result) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Workspace not found or no access' } });
+      return;
+    }
+    res.json({ success: true, data: result.data, pagination: result.pagination });
+  } catch (error) {
+    logger.error('document list error:', error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to list documents' } });
+  }
+}
+
+export async function getById(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      return;
+    }
+    const doc = await documentService.getById(req.params.id, user._id.toString());
+    if (!doc) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Document not found' } });
+      return;
+    }
+    res.json({ success: true, data: doc });
+  } catch (error) {
+    logger.error('document getById error:', error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to get document' } });
+  }
+}
+
+export async function download(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      return;
+    }
+    const result = await documentService.getDownloadStream(req.params.id, user._id.toString());
+    if (!result) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Document not found' } });
+      return;
+    }
+    res.setHeader('Content-Type', result.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.send(result.buffer);
+  } catch (error) {
+    logger.error('document download error:', error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Download failed' } });
+  }
+}
+
+export async function remove(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      return;
+    }
+    const ok = await documentService.removeDocument(req.params.id, user._id.toString());
+    if (!ok) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Document not found or no permission' } });
+      return;
+    }
+    res.status(204).send();
+  } catch (error) {
+    logger.error('document remove error:', error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Delete failed' } });
+  }
+}
