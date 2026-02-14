@@ -151,11 +151,11 @@ export default function AnalyticsPage() {
                                   ? `${count} activity`
                                   : "No activity"
                               }
-                              className="w-3 h-3 rounded-sm shrink-0 border border-neutral-100 transition-colors"
+                              className="w-3 h-3 rounded-sm shrink-0 border border-neutral-200 transition-colors"
                               style={{
                                 backgroundColor:
                                   count === undefined || count === 0
-                                    ? "var(--color-neutral-100, #f5f5f5)"
+                                    ? "#e5e5e5"
                                     : count === 1
                                       ? "#86efac"
                                       : count <= 3
@@ -171,10 +171,10 @@ export default function AnalyticsPage() {
                   <div className="flex items-center gap-4 mt-2 text-xs text-neutral-500">
                     <span>Less</span>
                     <span className="flex gap-0.5">
-                      <span className="w-3 h-3 rounded-sm bg-neutral-100" />
-                      <span className="w-3 h-3 rounded-sm bg-[#86efac]" />
-                      <span className="w-3 h-3 rounded-sm bg-[#4ade80]" />
-                      <span className="w-3 h-3 rounded-sm bg-[#22c55e]" />
+                      <span className="w-3 h-3 rounded-sm border border-neutral-200 bg-neutral-200" />
+                      <span className="w-3 h-3 rounded-sm border border-neutral-200 bg-[#86efac]" />
+                      <span className="w-3 h-3 rounded-sm border border-neutral-200 bg-[#4ade80]" />
+                      <span className="w-3 h-3 rounded-sm border border-neutral-200 bg-[#22c55e]" />
                     </span>
                     <span>More</span>
                   </div>

@@ -1,7 +1,9 @@
 import fs from 'fs/promises';
 import { Request, Response } from 'express';
 import Document from '../models/Document';
+import Workspace from '../models/Workspace';
 import * as documentService from '../services/document.service';
+import * as notificationService from '../services/notification.service';
 import { generateSummary, streamDocumentAnswerToResponse } from '../services/ai/vercel-ai.service';
 import { extractTextFromBuffer } from '../utils/extract-text';
 import { isValidObjectId } from '../utils/validators';
@@ -38,6 +40,20 @@ export async function upload(req: Request, res: Response): Promise<void> {
     }
     const populated = await Document.findById(doc._id).populate('uploadedBy', 'name email avatar').lean();
     await activityService.recordActivity(user._id.toString());
+    const workspace = await Workspace.findById(workspaceId).select('name').lean();
+    await notificationService.notifyWorkspaceMembersExcept(
+      String(workspaceId),
+      user._id.toString(),
+      'document_uploaded',
+      {
+        workspaceId: String(workspaceId),
+        workspaceName: workspace?.name,
+        documentId: doc._id.toString(),
+        documentTitle: doc.title,
+        actorUserId: user._id.toString(),
+        actorName: user.name,
+      }
+    ).catch((err) => logger.error('notification create error:', err));
     res.status(201).json({ success: true, data: populated || doc });
   } catch (error) {
     logger.error('document upload error:', error);

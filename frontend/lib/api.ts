@@ -1,6 +1,7 @@
 import type { User } from "@/types/auth";
 import type { Workspace, Pagination } from "@/types/workspace";
 import type { Document } from "@/types/document";
+import type { Notification } from "@/types/notification";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
 
@@ -174,6 +175,96 @@ export async function getAnalytics(
   };
   if (typeof tokenOrAuth === "string") return run(tokenOrAuth);
   return withAuthRetry(run, tokenOrAuth);
+}
+
+// --- Notifications ---
+
+/** GET /api/notifications. Optional query: limit, unreadOnly. */
+export async function getNotifications(
+  auth: AuthHelpers,
+  params?: { limit?: number; unreadOnly?: boolean }
+): Promise<
+  | { success: true; data: Notification[] }
+  | { success: false; error: { code: string; message: string } }
+> {
+  const search = new URLSearchParams();
+  if (params?.limit != null) search.set("limit", String(params.limit));
+  if (params?.unreadOnly) search.set("unreadOnly", "true");
+  const q = search.toString();
+  return withAuthRetry(
+    async (token) => {
+      const res = await fetch(`${API_BASE}/api/notifications${q ? `?${q}` : ""}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return { success: false, error: json?.error ?? { code: "REQUEST_FAILED", message: res.statusText } };
+      return { success: true, data: json.data ?? [] };
+    },
+    auth
+  );
+}
+
+/** GET /api/notifications/unread-count */
+export async function getNotificationUnreadCount(
+  auth: AuthHelpers
+): Promise<
+  | { success: true; data: { count: number } }
+  | { success: false; error: { code: string; message: string } }
+> {
+  return withAuthRetry(
+    async (token) => {
+      const res = await fetch(`${API_BASE}/api/notifications/unread-count`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return { success: false, error: json?.error ?? { code: "REQUEST_FAILED", message: res.statusText } };
+      return { success: true, data: json.data ?? { count: 0 } };
+    },
+    auth
+  );
+}
+
+/** PATCH /api/notifications/:id/read */
+export async function markNotificationRead(
+  auth: AuthHelpers,
+  id: string
+): Promise<
+  | { success: true; data: { ok: boolean } }
+  | { success: false; error: { code: string; message: string } }
+> {
+  return withAuthRetry(
+    async (token) => {
+      const res = await fetch(`${API_BASE}/api/notifications/${id}/read`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return { success: false, error: json?.error ?? { code: "REQUEST_FAILED", message: res.statusText } };
+      return { success: true, data: json.data ?? { ok: true } };
+    },
+    auth
+  );
+}
+
+/** PATCH /api/notifications/read-all */
+export async function markAllNotificationsRead(
+  auth: AuthHelpers
+): Promise<
+  | { success: true; data: { count: number } }
+  | { success: false; error: { code: string; message: string } }
+> {
+  return withAuthRetry(
+    async (token) => {
+      const res = await fetch(`${API_BASE}/api/notifications/read-all`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return { success: false, error: json?.error ?? { code: "REQUEST_FAILED", message: res.statusText } };
+      return { success: true, data: json.data ?? { count: 0 } };
+    },
+    auth
+  );
 }
 
 /** POST /api/auth/refresh with { refreshToken } */

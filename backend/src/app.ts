@@ -9,6 +9,7 @@ import authRoutes from './routes/auth.routes';
 import workspaceRoutes from './routes/workspace.routes';
 import documentRoutes from './routes/document.routes';
 import analyticsRoutes from './routes/analytics.routes';
+import notificationRoutes from './routes/notification.routes';
 
 const app: Express = express();
 
@@ -57,6 +58,7 @@ app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {

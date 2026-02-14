@@ -9,7 +9,7 @@ import { Problem } from "@/components/landing/problem";
 export default function Home() {
   return (
     <LandingGate>
-      <main className="min-h-screen bg-[#FDFBF7] dark:bg-neutral-950">
+      <main className="min-h-screen bg-[#FDFBF7]">
         <LandingHeader />
         <Hero />
         <Problem />

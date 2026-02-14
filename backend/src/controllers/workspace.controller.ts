@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as workspaceService from '../services/workspace.service';
+import * as notificationService from '../services/notification.service';
 import { isValidObjectId } from '../utils/validators';
 import logger from '../utils/logger';
 import User from '../models/User';
@@ -142,6 +143,12 @@ export async function inviteByEmail(req: Request, res: Response): Promise<void> 
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Workspace not found or no permission' } });
       return;
     }
+    await notificationService.createNotification(invitedUser._id.toString(), 'workspace_invite', {
+      workspaceId: req.params.id,
+      workspaceName: (workspace as { name?: string }).name,
+      actorUserId: user._id.toString(),
+      actorName: user.name,
+    }).catch((err) => logger.error('notification create error:', err));
     res.json({ success: true, data: workspace });
   } catch (error) {
     logger.error('workspace inviteByEmail error:', error);
@@ -171,6 +178,15 @@ export async function addMember(req: Request, res: Response): Promise<void> {
     if (!workspace) {
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Workspace not found or no permission' } });
       return;
+    }
+    const addedUserId = String(userId);
+    if (addedUserId !== user._id.toString()) {
+      await notificationService.createNotification(addedUserId, 'workspace_invite', {
+        workspaceId: req.params.id,
+        workspaceName: (workspace as { name?: string }).name,
+        actorUserId: user._id.toString(),
+        actorName: user.name,
+      }).catch((err) => logger.error('notification create error:', err));
     }
     res.json({ success: true, data: workspace });
   } catch (error) {
