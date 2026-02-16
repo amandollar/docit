@@ -108,11 +108,6 @@ export default function DashboardPage() {
             );
           })}
         </div>
-
-        {/* Subtle tip */}
-        <p className="mt-8 text-center text-sm text-neutral-400">
-          Use the nav above to jump to Workspaces, Summarize, or Analytics anytime.
-        </p>
       </div>
     </main>
   );
