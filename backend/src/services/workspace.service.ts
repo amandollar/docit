@@ -1,6 +1,7 @@
 import Workspace, { IWorkspace, WorkspaceMemberRole } from '../models/Workspace';
 import User from '../models/User';
 import Document from '../models/Document';
+import Webhook from '../models/Webhook';
 import { IUser } from '../models/User';
 import { PaginatedResponse } from '../types';
 
@@ -97,6 +98,7 @@ export async function deleteWorkspace(workspaceId: string, userId: string): Prom
   const role = await getMemberRole(workspaceId, userId);
   if (role !== 'admin') return false;
   await Document.deleteMany({ workspace: workspaceId });
+  await Webhook.deleteMany({ workspace: workspaceId });
   await Workspace.findByIdAndDelete(workspaceId);
   await User.updateMany({}, { $pull: { workspaces: workspaceId } });
   return true;

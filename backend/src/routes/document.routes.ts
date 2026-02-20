@@ -24,6 +24,14 @@ router.post('/summarize-file', (req: Request, res: Response, next: NextFunction)
   });
 }, documentController.summarizeFile);
 
+// Enhanced summarize: structured output (key points, topics, document type)
+router.post('/summarize-file-enhanced', (req: Request, res: Response, next: NextFunction) => {
+  upload.single('file')(req, res, (err: unknown) => {
+    if (err) return next(err);
+    next();
+  });
+}, documentController.summarizeFileEnhanced);
+
 // List documents in a workspace: GET /documents/workspace/:workspaceId
 router.get('/workspace/:workspaceId', validateParamId('workspaceId'), documentController.list);
 

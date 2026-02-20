@@ -13,6 +13,9 @@ import {
   inviteWorkspaceByEmail,
   removeWorkspaceMember,
   updateWorkspaceMemberRole,
+  listWebhooks,
+  createWebhook,
+  deleteWebhook,
   listDocumentsByWorkspace,
   uploadDocument,
   downloadDocument,
@@ -24,7 +27,7 @@ import type { Workspace, WorkspaceMemberRole } from "@/types/workspace";
 import type { Document } from "@/types/document";
 import { useWorkspaceChat } from "@/lib/use-workspace-chat";
 import { WorkspaceChatPanel } from "@/components/dashboard/workspace-chat-panel";
-import { ArrowLeft, FileText, Pencil, Trash2, Loader2, Upload, Download, UserPlus, Users, FileStack, Sparkles, MessageCircle } from "lucide-react";
+import { ArrowLeft, FileText, Pencil, Trash2, Loader2, Upload, Download, UserPlus, Users, FileStack, Sparkles, MessageCircle, Webhook, Plus, Settings } from "lucide-react";
 import { isAllowedFile, ALLOWED_ACCEPT, SUPPORTED_TYPES_LABEL } from "@/lib/document-types";
 
 export default function WorkspaceDetailPage() {
@@ -71,6 +74,17 @@ export default function WorkspaceDetailPage() {
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null);
 
+  // Webhooks (Zapier)
+  const [webhooks, setWebhooks] = useState<{ _id: string; url: string; description?: string; events: string[] }[]>([]);
+  const [webhooksLoading, setWebhooksLoading] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookDesc, setWebhookDesc] = useState("");
+  const [addingWebhook, setAddingWebhook] = useState(false);
+  const [deletingWebhookId, setDeletingWebhookId] = useState<string | null>(null);
+  const [webhookError, setWebhookError] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<"documents" | "members" | "settings">("documents");
+
   const { messages: chatMessages, status: chatStatus, errorMessage: chatError, send: sendChatMessage, reconnect: reconnectChat } = useWorkspaceChat(id, getAccessToken);
 
   const fetchWorkspace = useCallback(async () => {
@@ -98,6 +112,14 @@ export default function WorkspaceDetailPage() {
     else setDocsError(res.error?.message ?? "Failed to load documents");
   }, [auth, id]);
 
+  const fetchWebhooks = useCallback(async () => {
+    if (!id) return;
+    setWebhooksLoading(true);
+    const res = await listWebhooks(auth, id);
+    setWebhooksLoading(false);
+    if (res.success) setWebhooks(res.data);
+  }, [auth, id]);
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       window.location.href = "/";
@@ -109,6 +131,10 @@ export default function WorkspaceDetailPage() {
   useEffect(() => {
     if (isAuthenticated && id && workspace) fetchDocuments();
   }, [isAuthenticated, id, workspace, fetchDocuments]);
+
+  useEffect(() => {
+    if (isAuthenticated && id && workspace) fetchWebhooks();
+  }, [isAuthenticated, id, workspace, fetchWebhooks]);
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -292,6 +318,33 @@ export default function WorkspaceDetailPage() {
     if (res.success) setWorkspace(res.data);
   };
 
+  const handleAddWebhook = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !webhookUrl.trim()) return;
+    setWebhookError(null);
+    setAddingWebhook(true);
+    const res = await createWebhook(auth, id, {
+      url: webhookUrl.trim(),
+      description: webhookDesc.trim() || undefined,
+    });
+    setAddingWebhook(false);
+    if (res.success) {
+      setWebhooks((prev) => [...prev, res.data]);
+      setWebhookUrl("");
+      setWebhookDesc("");
+    } else {
+      setWebhookError(res.error?.message ?? "Failed to add webhook");
+    }
+  };
+
+  const handleDeleteWebhook = async (webhookId: string) => {
+    if (!id) return;
+    setDeletingWebhookId(webhookId);
+    const res = await deleteWebhook(auth, id, webhookId);
+    setDeletingWebhookId(null);
+    if (res.success) setWebhooks((prev) => prev.filter((w) => w._id !== webhookId));
+  };
+
   const getUserId = (u: { _id: string } | string): string => (typeof u === "object" ? u._id : u);
   const getDisplayName = (u: { name?: string; email?: string } | string): string =>
     typeof u === "object" ? u.name || u.email || "—" : "—";
@@ -358,81 +411,69 @@ export default function WorkspaceDetailPage() {
           Back to workspaces
         </Link>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-8 xl:gap-10 items-start">
-          <div className="space-y-6 min-w-0">
-          {/* Workspace info — standard card */}
-          <div className="bg-white border border-neutral-200 rounded-lg shadow-sm p-6">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="min-w-0 flex-1">
-                {!editing ? (
-                  <>
-                    <h1 className="text-xl font-semibold text-neutral-900">{workspace.name}</h1>
-                    {workspace.description && (
-                      <p className="text-neutral-600 text-sm mt-1">{workspace.description}</p>
-                    )}
-                  </>
-                ) : (
-                  <form onSubmit={handleSaveEdit} className="space-y-3 max-w-md">
-                    <div>
-                      <label className="block text-sm font-medium text-neutral-700 mb-1">Name</label>
-                      <input
-                        type="text"
-                        required
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="w-full rounded border border-neutral-300 px-3 py-2 text-neutral-900 text-sm focus:border-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-neutral-700 mb-1">Description</label>
-                      <input
-                        type="text"
-                        placeholder="Optional"
-                        value={editDescription}
-                        onChange={(e) => setEditDescription(e.target.value)}
-                        className="w-full rounded border border-neutral-300 px-3 py-2 text-neutral-900 text-sm placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-500"
-                      />
-                    </div>
-                    {saveError && <p className="text-red-600 text-sm">{saveError}</p>}
-                    <div className="flex gap-2">
-                      <Button type="submit" size="sm" disabled={saving}>
-                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
-                      </Button>
-                      <Button type="button" variant="outline" size="sm" onClick={() => setEditing(false)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </form>
-                )}
-              </div>
-              {!editing && isAdmin && (
-                <div className="flex gap-2 shrink-0">
-                  <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                    <Pencil className="w-4 h-4 mr-1" />
-                    Edit
-                  </Button>
-                  {!confirmDelete ? (
-                    <Button variant="outline" size="sm" onClick={() => setConfirmDelete(true)}>
-                      <Trash2 className="w-4 h-4 mr-1" />
-                      Delete
-                    </Button>
-                  ) : (
-                    <div className="flex gap-2 items-center">
-                      <span className="text-sm text-neutral-500">Delete workspace?</span>
-                      <Button size="sm" onClick={handleDelete} disabled={deleting}>
-                        {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Yes"}
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>
-                        No
-                      </Button>
-                    </div>
-                  )}
-                </div>
+        {/* Header: workspace name + tabs */}
+        <div className="mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-semibold text-neutral-900">{workspace.name}</h1>
+              {workspace.description && (
+                <p className="text-neutral-600 text-sm mt-0.5">{workspace.description}</p>
               )}
             </div>
           </div>
+          <nav className="flex gap-1 mt-4 border-b border-neutral-200" aria-label="Workspace tabs">
+            <button
+              type="button"
+              onClick={() => setActiveTab("documents")}
+              className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                activeTab === "documents"
+                  ? "border-neutral-900 text-neutral-900"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300"
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Documents
+                {!docsLoading && documents.length > 0 && (
+                  <span className="text-xs font-normal text-neutral-400">({documents.length})</span>
+                )}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("members")}
+              className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                activeTab === "members"
+                  ? "border-neutral-900 text-neutral-900"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300"
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Members
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("settings")}
+              className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                activeTab === "settings"
+                  ? "border-neutral-900 text-neutral-900"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300"
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Settings
+              </span>
+            </button>
+          </nav>
+        </div>
 
-          {/* Members section */}
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-8 xl:gap-10 items-start">
+          <div className="min-w-0">
+          {/* Tab: Members */}
+          {activeTab === "members" && (
           <div className="bg-white border border-neutral-200 rounded-lg shadow-sm p-6">
             <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wide flex items-center gap-2 mb-4">
               <Users className="w-4 h-4 text-neutral-500" />
@@ -547,24 +588,173 @@ export default function WorkspaceDetailPage() {
               </p>
             )}
           </div>
+          )}
 
-          {/* Documents section */}
-          <div className="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-neutral-100">
-              <div className="flex items-baseline justify-between gap-4 flex-wrap">
-                <div>
-                  <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wide flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-neutral-500 shrink-0" />
-                    Documents
-                    {!docsLoading && documents.length > 0 && (
-                      <span className="font-normal normal-case text-neutral-500">({documents.length})</span>
-                    )}
-                  </h2>
-                  <p className="text-neutral-500 text-sm mt-0.5">Documents in this workspace. Download or manage below.</p>
+          {/* Tab: Settings */}
+          {activeTab === "settings" && (
+          <div className="space-y-6">
+            {/* Workspace info */}
+            <div className="bg-white border border-neutral-200 rounded-lg shadow-sm p-6">
+              <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wide mb-4">Workspace details</h2>
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="min-w-0 flex-1">
+                  {!editing ? (
+                    <>
+                      <p className="font-medium text-neutral-900">{workspace.name}</p>
+                      {workspace.description && (
+                        <p className="text-neutral-600 text-sm mt-1">{workspace.description}</p>
+                      )}
+                    </>
+                  ) : (
+                    <form onSubmit={handleSaveEdit} className="space-y-3 max-w-md">
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-1">Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="w-full rounded border border-neutral-300 px-3 py-2 text-neutral-900 text-sm focus:border-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-1">Description</label>
+                        <input
+                          type="text"
+                          placeholder="Optional"
+                          value={editDescription}
+                          onChange={(e) => setEditDescription(e.target.value)}
+                          className="w-full rounded border border-neutral-300 px-3 py-2 text-neutral-900 text-sm placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-500"
+                        />
+                      </div>
+                      {saveError && <p className="text-red-600 text-sm">{saveError}</p>}
+                      <div className="flex gap-2">
+                        <Button type="submit" size="sm" disabled={saving}>
+                          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setEditing(false)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </form>
+                  )}
                 </div>
+                {!editing && isAdmin && (
+                  <div className="flex gap-2 shrink-0">
+                    <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                      <Pencil className="w-4 h-4 mr-1" />
+                      Edit
+                    </Button>
+                    {!confirmDelete ? (
+                      <Button variant="outline" size="sm" onClick={() => setConfirmDelete(true)}>
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete
+                      </Button>
+                    ) : (
+                      <div className="flex gap-2 items-center">
+                        <span className="text-sm text-neutral-500">Delete workspace?</span>
+                        <Button size="sm" onClick={handleDelete} disabled={deleting}>
+                          {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Yes"}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>
+                          No
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
+            {/* Webhooks (Zapier) */}
+            {canUpload && (
+            <div className="bg-white border border-neutral-200 rounded-lg shadow-sm p-6">
+              <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wide flex items-center gap-2 mb-4">
+                <Webhook className="w-4 h-4 text-neutral-500" />
+                Webhooks
+              </h2>
+              <p className="text-neutral-500 text-sm mb-4">
+                Add a webhook URL to receive events (e.g. from Zapier) when documents are uploaded, summarized, or members are invited.
+              </p>
+              <form onSubmit={handleAddWebhook} className="flex flex-wrap items-end gap-3 mb-4">
+                <div className="flex-1 min-w-[200px]">
+                  <label htmlFor="webhook-url" className="block text-xs font-medium text-neutral-600 mb-1">
+                    Webhook URL
+                  </label>
+                  <input
+                    id="webhook-url"
+                    type="url"
+                    placeholder="https://hooks.zapier.com/..."
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                    className="w-full rounded border border-neutral-300 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-500"
+                  />
+                </div>
+                <div className="flex-1 min-w-[120px]">
+                  <label htmlFor="webhook-desc" className="block text-xs font-medium text-neutral-600 mb-1">
+                    Description (optional)
+                  </label>
+                  <input
+                    id="webhook-desc"
+                    type="text"
+                    placeholder="Zapier"
+                    value={webhookDesc}
+                    onChange={(e) => setWebhookDesc(e.target.value)}
+                    className="w-full rounded border border-neutral-300 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-500"
+                  />
+                </div>
+                <Button type="submit" size="sm" disabled={addingWebhook || !webhookUrl.trim()}>
+                  {addingWebhook ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
+                  Add
+                </Button>
+              </form>
+              {webhookError && <p className="text-red-600 text-sm mb-3">{webhookError}</p>}
+              {webhooksLoading ? (
+                <div className="flex items-center gap-2 text-neutral-500 text-sm py-4">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading webhooks…
+                </div>
+              ) : webhooks.length > 0 ? (
+                <ul className="space-y-2">
+                  {webhooks.map((wh) => (
+                    <li
+                      key={wh._id}
+                      className="flex items-center justify-between gap-3 p-3 rounded-lg border border-neutral-100 bg-neutral-50/50"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-neutral-900 truncate">{wh.url}</p>
+                        {wh.description && (
+                          <p className="text-xs text-neutral-500 truncate">{wh.description}</p>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteWebhook(wh._id)}
+                        disabled={deletingWebhookId === wh._id}
+                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 shrink-0"
+                        title="Remove webhook"
+                      >
+                        {deletingWebhookId === wh._id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-neutral-500 text-sm py-2">No webhooks yet. Add one above to connect Zapier or other tools.</p>
+              )}
+            </div>
+            )}
+          </div>
+          )}
+
+          {/* Tab: Documents */}
+          {activeTab === "documents" && (
+          <div className="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
             <div className="p-5 space-y-5">
               {canUpload && (
                 <>
@@ -765,6 +955,7 @@ export default function WorkspaceDetailPage() {
               ) : null}
             </div>
           </div>
+          )}
           </div>
 
           {/* Workspace chat — sidebar on xl */}

@@ -478,6 +478,94 @@ export async function removeWorkspaceMember(
   return withAuthRetry(run, tokenOrAuth);
 }
 
+// --- Webhooks (Zapier support) ---
+
+export type WebhookEvent = "document_uploaded" | "document_summarized" | "workspace_created" | "member_invited";
+
+export interface Webhook {
+  _id: string;
+  workspace: string;
+  url: string;
+  description?: string;
+  events: WebhookEvent[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** GET /api/workspaces/:id/webhooks */
+export async function listWebhooks(
+  tokenOrAuth: string | AuthHelpers,
+  workspaceId: string
+): Promise<
+  | { success: true; data: Webhook[] }
+  | { success: false; error: { code: string; message: string } }
+> {
+  if (typeof tokenOrAuth === "string") {
+    return request<Webhook[]>(`/api/workspaces/${workspaceId}/webhooks`, { token: tokenOrAuth });
+  }
+  return withAuthRetry((token) => request<Webhook[]>(`/api/workspaces/${workspaceId}/webhooks`, { token }), tokenOrAuth);
+}
+
+/** POST /api/workspaces/:id/webhooks. Body: { url, description?, events? } */
+export async function createWebhook(
+  tokenOrAuth: string | AuthHelpers,
+  workspaceId: string,
+  data: { url: string; description?: string; events?: WebhookEvent[] }
+): Promise<
+  | { success: true; data: Webhook }
+  | { success: false; error: { code: string; message: string } }
+> {
+  if (typeof tokenOrAuth === "string") {
+    return request<Webhook>(`/api/workspaces/${workspaceId}/webhooks`, {
+      method: "POST",
+      token: tokenOrAuth,
+      body: JSON.stringify(data),
+    });
+  }
+  return withAuthRetry(
+    (token) =>
+      request<Webhook>(`/api/workspaces/${workspaceId}/webhooks`, {
+        method: "POST",
+        token,
+        body: JSON.stringify(data),
+      }),
+    tokenOrAuth
+  );
+}
+
+/** DELETE /api/workspaces/:id/webhooks/:webhookId */
+export async function deleteWebhook(
+  tokenOrAuth: string | AuthHelpers,
+  workspaceId: string,
+  webhookId: string
+): Promise<
+  | { success: true }
+  | { success: false; error: { code: string; message: string } }
+> {
+  type Result = { success: true } | { success: false; error: { code: string; message: string } };
+  const run = async (token: string): Promise<Result> => {
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/api/workspaces/${workspaceId}/webhooks/${webhookId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      const message =
+        err instanceof TypeError && err.message === "Failed to fetch"
+          ? "Could not reach the server."
+          : err instanceof Error ? err.message : "Network error";
+      return { success: false, error: { code: "NETWORK_ERROR", message } };
+    }
+    if (res.status === 204) return { success: true };
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) return { success: false, error: json?.error ?? { code: "REQUEST_FAILED", message: res.statusText } };
+    return { success: true };
+  };
+  if (typeof tokenOrAuth === "string") return run(tokenOrAuth);
+  return withAuthRetry(run, tokenOrAuth);
+}
+
 /** PATCH /api/workspaces/:id/members/:userId/role. Pass auth from useAuth() for auto refresh. */
 export async function updateWorkspaceMemberRole(
   tokenOrAuth: string | AuthHelpers,
@@ -656,6 +744,50 @@ export async function summarizeFile(
     const json = await res.json().catch(() => ({}));
     if (!res.ok) return { success: false, error: json?.error ?? { code: "REQUEST_FAILED", message: res.statusText } };
     return { success: true, data: { summary: (json as { data?: { summary?: string } }).data?.summary ?? "" } };
+  };
+  if (typeof tokenOrAuth === "string") return run(tokenOrAuth);
+  return withAuthRetry(run, tokenOrAuth);
+}
+
+/** Enhanced summary: { summary, keyPoints, topics, documentType } */
+export interface EnhancedSummary {
+  summary: string;
+  keyPoints: string[];
+  topics: string[];
+  documentType: string;
+}
+
+/** POST /api/documents/summarize-file-enhanced – structured summary with key points, topics, document type. */
+export async function summarizeFileEnhanced(
+  tokenOrAuth: string | AuthHelpers,
+  file: File
+): Promise<
+  | { success: true; data: EnhancedSummary }
+  | { success: false; error: { code: string; message: string } }
+> {
+  type Result = { success: true; data: EnhancedSummary } | { success: false; error: { code: string; message: string } };
+  const run = async (token: string): Promise<Result> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/api/documents/summarize-file-enhanced`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+    } catch (err) {
+      const message =
+        err instanceof TypeError && err.message === "Failed to fetch"
+          ? "Could not reach the server."
+          : err instanceof Error ? err.message : "Network error";
+      return { success: false, error: { code: "NETWORK_ERROR", message } };
+    }
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) return { success: false, error: json?.error ?? { code: "REQUEST_FAILED", message: res.statusText } };
+    const data = (json as { data?: EnhancedSummary }).data;
+    if (!data) return { success: false, error: { code: "INVALID_RESPONSE", message: "Invalid response" } };
+    return { success: true, data };
   };
   if (typeof tokenOrAuth === "string") return run(tokenOrAuth);
   return withAuthRetry(run, tokenOrAuth);

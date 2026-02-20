@@ -4,11 +4,12 @@ import Document from '../models/Document';
 import Workspace from '../models/Workspace';
 import * as documentService from '../services/document.service';
 import * as notificationService from '../services/notification.service';
-import { generateSummary, streamDocumentAnswerToResponse } from '../services/ai/vercel-ai.service';
+import { generateSummary, generateEnhancedSummary, streamDocumentAnswerToResponse } from '../services/ai/vercel-ai.service';
 import { extractTextFromBuffer } from '../utils/extract-text';
 import { isValidObjectId } from '../utils/validators';
 import logger from '../utils/logger';
 import * as activityService from '../services/activity.service';
+import * as webhookService from '../services/webhook.service';
 
 export async function upload(req: Request, res: Response): Promise<void> {
   try {
@@ -54,6 +55,13 @@ export async function upload(req: Request, res: Response): Promise<void> {
         actorName: user.name,
       }
     ).catch((err) => logger.error('notification create error:', err));
+    webhookService.fireWebhooks(String(workspaceId), 'document_uploaded', {
+      workspaceName: workspace?.name,
+      documentId: doc._id.toString(),
+      documentTitle: doc.title,
+      actorUserId: user._id.toString(),
+      actorName: user.name,
+    }).catch((err) => logger.error('webhook fire error:', err));
     res.status(201).json({ success: true, data: populated || doc });
   } catch (error) {
     logger.error('document upload error:', error);
@@ -80,6 +88,29 @@ export async function summarizeFile(req: Request, res: Response): Promise<void> 
     res.json({ success: true, data: { summary } });
   } catch (error) {
     logger.error('summarize-file error:', error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Summarization failed' } });
+  }
+}
+
+export async function summarizeFileEnhanced(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      return;
+    }
+    const file = req.file;
+    if (!file?.path) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A file is required (PDF or text)' } });
+      return;
+    }
+    const buffer = await fs.readFile(file.path);
+    await fs.unlink(file.path).catch(() => {});
+    const text = await extractTextFromBuffer(buffer, file.mimetype);
+    const enhanced = await generateEnhancedSummary(file.originalname.replace(/\.[^.]+$/i, '') || 'Document', text);
+    await activityService.recordActivity(req.user!._id.toString());
+    res.json({ success: true, data: enhanced });
+  } catch (error) {
+    logger.error('summarize-file-enhanced error:', error);
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Summarization failed' } });
   }
 }
@@ -171,6 +202,17 @@ export async function summarize(req: Request, res: Response): Promise<void> {
       return;
     }
     await activityService.recordActivity(user._id.toString());
+    const doc = await Document.findById(req.params.id).populate('workspace', 'name').lean();
+    if (doc?.workspace) {
+      const ws = doc.workspace as { _id: unknown; name?: string };
+      webhookService.fireWebhooks(String(ws._id), 'document_summarized', {
+        workspaceName: ws.name,
+        documentId: req.params.id,
+        documentTitle: docMeta.title,
+        actorUserId: user._id.toString(),
+        actorName: user.name,
+      }).catch((err) => logger.error('webhook fire error:', err));
+    }
     res.json({ success: true, data: { summary } });
   } catch (error) {
     logger.error('document summarize error:', error);

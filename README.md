@@ -12,6 +12,7 @@ DOCIT is an automated document management system with AI-powered summarization, 
 - **AI** — Per-document summarize & ask; one-off file summarization (Vercel AI SDK + Gemini)
 - **Workspace chat** — Real-time WebSocket chat per workspace
 - **Analytics** — Activity streak and last 365 days grid (LeetCode-style)
+- **Webhooks (Zapier)** — Per-workspace webhooks for document uploads, summaries, and member invites
 - **Dark mode** — System-aware theme toggle on landing and dashboard
 
 ## Tech Stack
@@ -110,6 +111,8 @@ dockit/
 - `POST /api/auth/refresh` — Refresh access token
 - `GET/POST /api/workspaces` — List, create workspaces
 - `GET/PATCH/DELETE /api/workspaces/:id` — Workspace CRUD, members
+- `GET/POST /api/workspaces/:id/webhooks` — List, add webhooks (Zapier)
+- `DELETE /api/workspaces/:id/webhooks/:webhookId` — Remove webhook
 - `GET/POST /api/documents/...` — Upload, list, download, delete; summarize, ask
 - `POST /api/documents/summarize-file` — One-off file summary (no workspace)
 - `GET /api/analytics/me` — Streak, activity grid, totals
